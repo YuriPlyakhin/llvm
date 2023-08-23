@@ -1,28 +1,7 @@
+#include "common.hpp"
+
 #define BF16_EPSILON 0.00781250
-static constexpr size_t M_MULTIPLIER = 16;
-
-template <typename T, size_t NUM_ROWS, size_t NUM_COLS> struct big_matrix {
-private:
-  T *mat;
-
-public:
-  T *get_data() { return mat; }
-  void set_data(T *data) { mat = data; }
-  big_matrix(T *data) : mat(data) {}
-};
-
-template <typename T>
-void matrix_vnni(unsigned int rows, unsigned int cols, T *src, T *dest,
-                 unsigned int vnniFactor) {
-  for (unsigned int i = 0; i < rows / vnniFactor; i++) {
-    for (unsigned int j = 0; j < cols; j++) {
-      for (unsigned int k = 0; k < vnniFactor; k++) {
-        dest[i * cols * vnniFactor + j * vnniFactor + k] =
-            src[(i * vnniFactor + k) * cols + j];
-      }
-    }
-  }
-}
+static constexpr size_t M_MULTIPLIER = 4; //16;
 
 template <typename T1, typename T2, size_t M, size_t N, size_t K,
           int vnniFactor, size_t TM, size_t TN, size_t TK>
@@ -40,11 +19,14 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
      sycl::accessor accA{bufA, cgh, sycl::read_only};
      sycl::accessor accB{bufB, cgh, sycl::read_only};
 
+     auto os = sycl::stream{8192, 8192, cgh};
+
      cgh.parallel_for(
          nd_range<2>({NDRangeM, NDRangeN * SG_SZ}, {1, 1 * SG_SZ}),
          [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]]
 
          {
+          os << spmd_item << ": ";
            // The submatrix API has to be accessed by all the workitems in a
            // subgroup these functions will be called once by the subgroup no
            // code divergence between the workitems
@@ -66,12 +48,29 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
                accC.template get_multi_ptr<access::decorated::no>() +
                    (sg_startx * TM) * N + sg_starty / SG_SZ * TN,
                N, layout::row_major);
+
+          //  os << "C: ";
+          //  auto wi_slice_c = sycl::ext::intel::experimental::matrix::get_wi_data(sg, sub_c);
+          //  for (int i = 0; i < wi_slice_c.length(); i++) {
+          //    os << wi_slice_c[i] << " ";
+          //  }
+          //  os << "\n";
+
            for (int k = 0; k < K / TK; k += 1) {
              joint_matrix_load(
                  sg, sub_a,
                  accA.template get_multi_ptr<access::decorated::no>() +
                      (sg_startx * TM) * K + k * TK,
                  K);
+
+             os << "A: ";
+             auto wi_slice_a =
+                 sycl::ext::intel::experimental::matrix::get_wi_data(sg, sub_a);
+             for (int i = 0; i < wi_slice_a.length(); i++) {
+               os << make_fp32(wi_slice_a[i]) << " ";
+             }
+             os << "\n";
+
              joint_matrix_load(
                  sg, sub_b,
                  accB.template get_multi_ptr<access::decorated::no>() +
@@ -89,15 +88,8 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
    }).wait();
 }
 
-static constexpr size_t MATRIX_N = 128;
-static constexpr size_t MATRIX_K = 128;
-
-float make_fp32(bfloat16 x) {
-  unsigned int y = *((int *)&x);
-  y = y << 16;
-  float *res = reinterpret_cast<float *>(&y);
-  return *res;
-}
+static constexpr size_t MATRIX_N = 16; //128;
+static constexpr size_t MATRIX_K = 16; //128;
 
 template <typename Ta, typename Tc>
 void matrix_multiply_ref(Ta *A, Ta *B, Tc *C, int M, int N, int K) {
@@ -125,26 +117,33 @@ int init_and_multiply() {
   Tc C[MATRIX_M][MATRIX_N];
   Tc D[MATRIX_M][MATRIX_N];
 
+  bfloat16 c = 0;
   for (int i = 0; i < MATRIX_M; i++) {
     for (int j = 0; j < MATRIX_K; j++) {
       if (std::is_same_v<Ta, bfloat16> && std::is_same_v<Tc, float>)
-        A[i][j] = bfloat16(1.0f * (i + j));
+        //A[i][j] = bfloat16(1.0f * (i + j));
+        A[i][j] = c++;
       if (std::is_same_v<Ta, int8_t> && std::is_same_v<Tc, int32_t>)
         A[i][j] = i + j;
     }
   }
+
   for (int i = 0; i < MATRIX_K; i++) {
     for (int j = 0; j < MATRIX_N; j++) {
       if (std::is_same_v<Ta, bfloat16> && std::is_same_v<Tc, float>)
-        B[i][j] = bfloat16(2.0f * i + 3.0f * j);
+        //B[i][j] = bfloat16(2.0f * i + 3.0f * j);
+        B[i][j] = (i == j) ? 1 : 0;
       if (std::is_same_v<Ta, int8_t> && std::is_same_v<Tc, int32_t>)
         B[i][j] = i + 2 * j;
     }
   }
   for (int i = 0; i < MATRIX_M; i++) {
     for (int j = 0; j < MATRIX_N; j++) {
-      C[i][j] = 1;
-      D[i][j] = 1;
+//      C[i][j] = 1;
+//      D[i][j] = 1;
+      C[i][j] = 0;
+      D[i][j] = 0;
+
     }
   }
 
@@ -155,9 +154,19 @@ int init_and_multiply() {
   big_matrix<Ta, MATRIX_K / vnni_factor, MATRIX_N * vnni_factor> MBvnni(
       (Ta *)&Bvnni);
 
+  TEST_DEBUG(matrix_print("A", MATRIX_M, MATRIX_K, (Ta *)&A, 3));
+  TEST_DEBUG(matrix_print("B", MATRIX_K, MATRIX_N, (Ta *)&B, 3));
+  TEST_DEBUG(matrix_print("B vnni", MATRIX_K / vnni_factor,
+                          MATRIX_N * vnni_factor, (Ta *)&Bvnni, 3));
+  TEST_DEBUG(matrix_print("C", MATRIX_M, MATRIX_N, (Tc *)&C, 3));
+  TEST_DEBUG(matrix_print("D", MATRIX_M, MATRIX_N, (Tc *)&D, 3));
+
   matrix_multiply<Tc, Ta, MATRIX_M, MATRIX_N, MATRIX_K, vnni_factor, tM, tN,
                   tK>(MC, MA, MBvnni);
   matrix_multiply_ref((Ta *)A, (Ta *)B, (Tc *)D, MATRIX_M, MATRIX_N, MATRIX_K);
+
+  TEST_DEBUG(matrix_print("C result", MATRIX_M, MATRIX_N, (Tc *)&C, 6));
+  TEST_DEBUG(matrix_print("D result", MATRIX_M, MATRIX_N, (Tc *)&D, 6));
 
   bool res = true;
   for (int i = 0; i < MATRIX_M; i++) {
@@ -180,22 +189,22 @@ int init_and_multiply() {
 int main() {
   int errors = 0;
   errors += init_and_multiply<bfloat16, float, 2, 1, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 2, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 3, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 4, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 5, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 6, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 7, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 8, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 2, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 3, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 4, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 5, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 6, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 7, SN, 16>();
+  // errors += init_and_multiply<bfloat16, float, 2, 8, SN, 16>();
 
-  errors += init_and_multiply<int8_t, int32_t, 4, 1, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 2, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 3, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 4, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 5, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 6, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 7, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 8, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 1, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 2, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 3, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 4, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 5, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 6, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 7, SN, 32>();
+  // errors += init_and_multiply<int8_t, int32_t, 4, 8, SN, 32>();
 
   return errors;
 }

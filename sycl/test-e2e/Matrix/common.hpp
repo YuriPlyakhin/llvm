@@ -1,5 +1,15 @@
+#include <iomanip>
 #include <random>
 #include <sycl/sycl.hpp>
+
+#ifndef TEST_DEBUG_OUT
+#define TEST_DEBUG_OUT 0
+#endif
+
+#define TEST_DEBUG(DBG_CODE)                                                   \
+  if (TEST_DEBUG_OUT == 1) {                                                   \
+    DBG_CODE;                                                                  \
+  }
 
 using bfloat16 = sycl::ext::oneapi::bfloat16;
 
@@ -80,4 +90,22 @@ bool matrix_compare(unsigned int rows, unsigned int cols, T1 *src, T2 *ref) {
     }
   }
   return res;
+}
+
+template <typename T>
+void matrix_print(std::string name, unsigned int rows, unsigned int cols,
+                  T *src, unsigned int print_width) {
+  std::cout << "Matrix " << name << " "<< rows << "x" << cols << ":\n";
+
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      std::cout << std::setw(print_width);
+      if (std::is_same_v<T, bfloat16>) {
+        std::cout << make_fp32(src[i * cols + j]);
+      } else {
+        std::cout << src[i * cols + j];
+      }
+    }
+    std::cout << "\n";
+  }
 }
