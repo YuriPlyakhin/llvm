@@ -95,16 +95,17 @@ bool matrix_compare(unsigned int rows, unsigned int cols, T1 *src, T2 *ref) {
 template <typename T>
 void matrix_print(std::string name, unsigned int rows, unsigned int cols,
                   T *src, unsigned int print_width) {
-  std::cout << "Matrix " << name << " "<< rows << "x" << cols << ":\n";
+  std::cout << "Matrix " << name << " " << rows << "x" << cols << ":\n";
 
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
       std::cout << std::setw(print_width);
-      if (std::is_same_v<T, bfloat16>) {
+      if constexpr (std::is_same_v<T, bfloat16>)
         std::cout << make_fp32(src[i * cols + j]);
-      } else {
+      if constexpr (std::is_same_v<T, int8_t> || std::is_same_v<T, int32_t>)
+        std::cout << (int)src[i * cols + j];
+      if constexpr (std::is_same_v<T, float>)
         std::cout << src[i * cols + j];
-      }
     }
     std::cout << "\n";
   }
