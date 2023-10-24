@@ -23,7 +23,6 @@ void matrix_copy(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A) {
 
   queue q;
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      auto accC = bufC.get_access<access::mode::read_write>(cgh);

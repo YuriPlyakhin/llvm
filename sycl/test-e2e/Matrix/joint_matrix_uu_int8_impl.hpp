@@ -23,7 +23,6 @@ void matrix_multiply(big_matrix<T1, NUM_ROWS_C, NUM_COLS_C> &C,
 
   queue q;
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      auto accC = bufC.get_access<access::mode::read_write>(cgh);
@@ -32,7 +31,7 @@ void matrix_multiply(big_matrix<T1, NUM_ROWS_C, NUM_COLS_C> &C,
 
      cgh.parallel_for<class imatrix>(
          nd_range<2>({NDRangeM, NDRangeN * wg_size}, {1, 1 * wg_size}),
-         [accA, accB, accC, M, N, K](nd_item<2> spmd_item)
+         [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
              [[intel::reqd_sub_group_size(SG_SZ)]]
 #endif

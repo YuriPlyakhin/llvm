@@ -1,9 +1,7 @@
 static constexpr size_t M_MULTIPLIER = 16;
 
-class imatrix;
-
 template <typename T1, typename T2, size_t M, size_t N, size_t K,
-          int vnniFactor, size_t TM, size_t TN, size_t TK>
+          int vnniFactor, size_t TM, size_t TN, size_t TK, class kernel_name>
 void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
                      big_matrix<T2, K / vnniFactor, N * vnniFactor> &B) {
   size_t NDRangeM = M / TM;
@@ -13,15 +11,14 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
   buffer<T1, 2> bufC(C.get_data(), range<2>(M, N));
 
   queue q;
-  size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
+  size_t wg_size = get_wg_size<kernel_name>(q);
 
   q.submit([&](handler &cgh) {
      sycl::accessor accC{bufC, cgh, sycl::read_write};
      sycl::accessor accA{bufA, cgh, sycl::read_only};
      sycl::accessor accB{bufB, cgh, sycl::read_only};
 
-     cgh.parallel_for<class imatrix>(
+     cgh.parallel_for<class kernel_name>(
          nd_range<2>({NDRangeM, NDRangeN * wg_size}, {1, 1 * wg_size}),
          [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
@@ -72,7 +69,7 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
 }
 
 template <typename Ta, typename Tc, int vnni_factor, size_t tM, size_t tN,
-          size_t tK>
+          size_t tK, class kernel_name>
 int init_and_multiply() {
   static constexpr size_t MATRIX_M = tM * M_MULTIPLIER;
   static constexpr size_t MATRIX_N = 128;
@@ -99,7 +96,7 @@ int init_and_multiply() {
       (Ta *)&Bvnni);
 
   matrix_multiply<Tc, Ta, MATRIX_M, MATRIX_N, MATRIX_K, vnni_factor, tM, tN,
-                  tK>(MC, MA, MBvnni);
+                  tK, kernel_name>(MC, MA, MBvnni);
   matrix_multiply_ref((Ta *)A, (Ta *)B, (Tc *)D, MATRIX_M, MATRIX_N, MATRIX_K);
 
   bool res = matrix_compare(MATRIX_M, MATRIX_N, (Tc *)C, (Tc *)D);
@@ -109,23 +106,23 @@ int init_and_multiply() {
 
 int main() {
   int errors = 0;
-  errors += init_and_multiply<bfloat16, float, 2, 1, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 2, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 3, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 4, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 5, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 6, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 7, SN, 16>();
-  errors += init_and_multiply<bfloat16, float, 2, 8, SN, 16>();
+  errors += init_and_multiply<bfloat16, float, 2, 1, SN, 16, bf16_1>();
+  errors += init_and_multiply<bfloat16, float, 2, 2, SN, 16, bf16_2>();
+  errors += init_and_multiply<bfloat16, float, 2, 3, SN, 16, bf16_3>();
+  errors += init_and_multiply<bfloat16, float, 2, 4, SN, 16, bf16_4>();
+  errors += init_and_multiply<bfloat16, float, 2, 5, SN, 16, bf16_5>();
+  errors += init_and_multiply<bfloat16, float, 2, 6, SN, 16, bf16_6>();
+  errors += init_and_multiply<bfloat16, float, 2, 7, SN, 16, bf16_7>();
+  errors += init_and_multiply<bfloat16, float, 2, 8, SN, 16, bf16_8>();
 
-  errors += init_and_multiply<int8_t, int32_t, 4, 1, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 2, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 3, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 4, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 5, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 6, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 7, SN, 32>();
-  errors += init_and_multiply<int8_t, int32_t, 4, 8, SN, 32>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 1, SN, 32, int8_1>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 2, SN, 32, int8_2>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 3, SN, 32, int8_3>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 4, SN, 32, int8_4>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 5, SN, 32, int8_5>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 6, SN, 32, int8_6>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 7, SN, 32, int8_7>();
+  errors += init_and_multiply<int8_t, int32_t, 4, 8, SN, 32, int8_8>();
 
   return errors;
 }

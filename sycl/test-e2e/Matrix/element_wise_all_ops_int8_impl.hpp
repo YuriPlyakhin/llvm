@@ -15,18 +15,17 @@ void assert_ops_ref(host_accessor<T, 2, access::mode::read> C, const int ref) {
 
 template <typename T, size_t M, size_t N, typename OP>
 void matrix_verify_op(big_matrix<T, M, N> &A, const int ref, OP op) {
-  buffer<T, 2> bufA(A.get_data(), range<2>(M, N));
+  buffer<int8_t, 2> bufA(A.get_data(), range<2>(M, N));
 
   queue q;
-  size_t wg_size = get_wg_size<add_matrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
+  size_t wg_size = get_wg_size<imatrix>(q);
   nd_range<2> r({M / TM, N / TN * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {
      auto accA = bufA.get_access<access::mode::read_write>(cgh);
 
      cgh.parallel_for<class imatrix>(
-         r, [accA](nd_item<2> spmd_item)
+         r, [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
                 [[intel::reqd_sub_group_size(SG_SZ)]]
 #endif
@@ -69,7 +68,7 @@ int main() {
   matrix_verify_op<int8_t, MATRIX_M, MATRIX_N>(MA, 7, [](auto &x) {
     if (x) {
       if (x > 2 || x >= 2 || x < 2 || x <= 2) {
-        T val = (x != 2) ? x : 2;
+        int8_t val = (x != 2) ? x : 2;
         val--;
         val++;
         if (x == 2) {

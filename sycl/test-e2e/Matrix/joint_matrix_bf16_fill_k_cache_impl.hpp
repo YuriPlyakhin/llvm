@@ -83,7 +83,6 @@ double joint_matmul(TOperand *A, TOperand *B, TResult *C, queue &q, int i) {
       std::chrono::high_resolution_clock::now();
 
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
   range<2> global{rowsA / MCACHE1, (colsB / NCACHE1) * wg_size};
   range<2> cachelocal{MCACHE2 / MCACHE1, NCACHE2 / NCACHE1 * wg_size};
 

@@ -19,7 +19,6 @@ void matrix_verify_op(big_matrix<T, M, N> &A, const int ref, OP op) {
 
   queue q;
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
   nd_range<2> r({M / TM, N / TN * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {

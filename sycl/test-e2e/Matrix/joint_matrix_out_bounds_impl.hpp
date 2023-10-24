@@ -26,7 +26,6 @@ void matrix_multiply(T1 *C, T2 *A, T2 *B, queue q, unsigned int vnniFactor) {
                                sycl::access::decorated::no>(C);
 
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      cgh.parallel_for<class imatrix>(

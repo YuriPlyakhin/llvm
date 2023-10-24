@@ -20,14 +20,13 @@ void matrix_verify_op(big_matrix<T, M, N> &A, const float ref, OP op) {
 
   queue q;
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
   nd_range<2> r({M / TM, N / TN * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {
      auto accA = bufA.get_access<access::mode::read_write>(cgh);
 
      cgh.parallel_for<class imatrix>(
-         r, [accA](nd_item<2> spmd_item)
+         r, [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
                 [[intel::reqd_sub_group_size(SG_SZ)]]
 #endif
@@ -67,11 +66,11 @@ int main() {
       MA, 15.0, [=](auto &x) { x = x * static_cast<half>(3.0); });
   matrix_verify_op<half, MATRIX_M, MATRIX_N>(
       MA, 2.0, [=](auto &x) { x = x / static_cast<half>(2.0); });
-  matrix_verify_op<half, MATRIX_M, MATRIX_N>(MA, 7.0, [](auto &x) {
+  matrix_verify_op<half, MATRIX_M, MATRIX_N>(MA, 7.0, [=](auto &x) {
     if (x) {
       if (x > static_cast<half>(2.0) || x >= static_cast<half>(2.0) ||
           x < static_cast<half>(2.0) || x <= static_cast<half>(2.0)) {
-        T val = (x != static_cast<half>(2.0)) ? x : static_cast<half>(2.0);
+        half val = (x != static_cast<half>(2.0)) ? x : static_cast<half>(2.0);
         val--;
         val++;
         if (x == static_cast<half>(2.0)) {

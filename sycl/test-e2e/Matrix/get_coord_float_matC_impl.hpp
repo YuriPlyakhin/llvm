@@ -28,7 +28,6 @@ void matrix_sum_rows(big_matrix<T1, M, N> &C, float *sum_rows) {
 
   queue q;
   size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      auto accC = bufC.get_access<access::mode::read_write>(cgh);

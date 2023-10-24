@@ -1,8 +1,6 @@
 #define TM 8
 #define TK 8
 
-class imatrix;
-
 template <typename T, size_t M, size_t N>
 void assert_ops_ref(host_accessor<T, 2, access::mode::read> C,
                     const float ref) {
@@ -14,20 +12,20 @@ void assert_ops_ref(host_accessor<T, 2, access::mode::read> C,
     }
 }
 
-template <typename T, typename Ts, size_t M, size_t K, typename OP>
+template <typename T, typename Ts, size_t M, size_t K, class kernel_name,
+          typename OP>
 void matrix_verify_op(big_matrix<Ts, M, K> &A, const float ref, OP op) {
   buffer<Ts, 2> bufA(A.get_data(), range<2>(M, K));
 
   queue q;
-  size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
+  size_t wg_size = get_wg_size<kernel_name>(q);
   nd_range<2> r({M / TM, K / TK * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
 
-     cgh.parallel_for<class imatrix>(
-         r, [accA](nd_item<2> spmd_item)
+     cgh.parallel_for<kernel_name>(
+         r, [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
                 [[intel::reqd_sub_group_size(SG_SZ)]]
 #endif
@@ -60,15 +58,15 @@ int main() {
   float A[MATRIX_M][MATRIX_K];
   big_matrix<float, MATRIX_M, MATRIX_K> MA((float *)&A);
 
-  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K>(
+  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K, class jm_add>(
       MA, 7.0, [&](float &x) { x = x + round_to_tf32(2); });
-  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K>(
+  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K, class jm_sub>(
       MA, 3.0, [&](float &x) { x = x - round_to_tf32(2); });
-  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K>(
+  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K, class jm_mul>(
       MA, 15.0, [&](float &x) { x = x * round_to_tf32(3.0); });
-  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K>(
+  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K, class jm_div>(
       MA, 2.0, [&](float &x) { x = x / round_to_tf32(2); });
-  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K>(
+  matrix_verify_op<precision::tf32, float, MATRIX_M, MATRIX_K, class jm_logic>(
       MA, 7.0, [&](float &x) {
         if (x) {
           if (x > 2 || x >= 2 || x < 2 || x <= 2) {

@@ -1,7 +1,5 @@
 static constexpr size_t M_MULTIPLIER = 16;
 
-class imatrix;
-
 template <typename T, size_t M, size_t N>
 void assert_ops_ref(host_accessor<T, 2, access::mode::read_write> C,
                     const T ref) {
@@ -17,7 +15,7 @@ void assert_ops_ref(host_accessor<T, 2, access::mode::read_write> C,
     }
 }
 
-template <typename T, typename T1, size_t TM, size_t TK>
+template <typename T, typename T1, size_t TM, size_t TK, class kernel_name>
 void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
   static constexpr size_t M = TM * M_MULTIPLIER;
   static constexpr size_t K = 128;
@@ -27,8 +25,7 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
   size_t NDRangeK = K / TK;
 
   queue q;
-  size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
+  size_t wg_size = get_wg_size<kernel_name>(q);
 
   nd_range<2> r({NDRangeM, NDRangeK * wg_size}, {1, 1 * wg_size});
   big_matrix<T, M, K> A((T *)&MatA);
@@ -38,7 +35,7 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
 
-     cgh.parallel_for<class imatrix>(
+     cgh.parallel_for<kernel_name>(
          r, [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
                 [[intel::reqd_sub_group_size(SG_SZ)]]
@@ -66,34 +63,34 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
   assert_ops_ref<T, M, K>(bufA.get_host_access(), result);
 }
 
-template <typename Ta, size_t tM, size_t tK> void add_ref() {
+template <typename Ta, size_t tM, size_t tK, class kernel_name> void add_ref() {
   if constexpr (std::is_same_v<Ta, bfloat16>) {
     // Tests whether 5 + 2 = 7 operation is successful.
-    matrix_verify_add<bfloat16, bfloat16, tM, tK>(bfloat16(5.0), bfloat16(2.0),
-                                                  bfloat16(7.0));
+    matrix_verify_add<bfloat16, bfloat16, tM, tK, kernel_name>(
+        bfloat16(5.0), bfloat16(2.0), bfloat16(7.0));
   }
   if constexpr (std::is_same_v<Ta, int8_t>) {
-    matrix_verify_add<int8_t, int, tM, tK>(5 /*val1*/, 2 /*val2*/,
-                                           7 /*result*/);
+    matrix_verify_add<int8_t, int, tM, tK, kernel_name>(5 /*val1*/, 2 /*val2*/,
+                                                        7 /*result*/);
   }
 }
 
 int main() {
-  add_ref<bfloat16, 1 /*TM*/, 16 /*TK*/>();
-  add_ref<bfloat16, 2 /*TM*/, 16 /*TK*/>();
-  add_ref<bfloat16, 3 /*TM*/, 16 /*TK*/>();
-  add_ref<bfloat16, 4 /*TM*/, 16 /*TK*/>();
-  add_ref<bfloat16, 5 /*TM*/, 16 /*TK*/>();
-  add_ref<bfloat16, 6 /*TM*/, 16 /*TK*/>();
-  add_ref<bfloat16, 7 /*TM*/, 16 /*TK*/>();
+  add_ref<bfloat16, 1 /*TM*/, 16 /*TK*/, bf16_1>();
+  add_ref<bfloat16, 2 /*TM*/, 16 /*TK*/, bf16_2>();
+  add_ref<bfloat16, 3 /*TM*/, 16 /*TK*/, bf16_3>();
+  add_ref<bfloat16, 4 /*TM*/, 16 /*TK*/, bf16_4>();
+  add_ref<bfloat16, 5 /*TM*/, 16 /*TK*/, bf16_5>();
+  add_ref<bfloat16, 6 /*TM*/, 16 /*TK*/, bf16_6>();
+  add_ref<bfloat16, 7 /*TM*/, 16 /*TK*/, bf16_7>();
 
-  add_ref<int8_t, 1 /*TM*/, 32 /*TK*/>();
-  add_ref<int8_t, 2 /*TM*/, 32 /*TK*/>();
-  add_ref<int8_t, 3 /*TM*/, 32 /*TK*/>();
-  add_ref<int8_t, 4 /*TM*/, 32 /*TK*/>();
-  add_ref<int8_t, 5 /*TM*/, 32 /*TK*/>();
-  add_ref<int8_t, 6 /*TM*/, 32 /*TK*/>();
-  add_ref<int8_t, 7 /*TM*/, 32 /*TK*/>();
+  add_ref<int8_t, 1 /*TM*/, 32 /*TK*/, int8_1>();
+  add_ref<int8_t, 2 /*TM*/, 32 /*TK*/, int8_2>();
+  add_ref<int8_t, 3 /*TM*/, 32 /*TK*/, int8_3>();
+  add_ref<int8_t, 4 /*TM*/, 32 /*TK*/, int8_4>();
+  add_ref<int8_t, 5 /*TM*/, 32 /*TK*/, int8_5>();
+  add_ref<int8_t, 6 /*TM*/, 32 /*TK*/, int8_6>();
+  add_ref<int8_t, 7 /*TM*/, 32 /*TK*/, int8_7>();
 
   std::cout << "Passed\n";
 }

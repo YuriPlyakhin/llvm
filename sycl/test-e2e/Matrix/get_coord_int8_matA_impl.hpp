@@ -80,12 +80,9 @@ void matrix_sum_rows(big_matrix<T, M, K> &A) {
   int sum_rows[M] = {0};
   buffer<int> sum_rows_v(sum_rows, M);
 
-  size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
-  size_t NDRangeM = MATRIX_M / TM;
-  size_t NDRangeK = MATRIX_K / TK;
   queue q;
-  nd_range<2> r({NDRangeM, NDRangeK * wg_size}, {1, 1 * wg_size});
+  size_t wg_size = get_wg_size<imatrix>(q);
+  nd_range<2> r({M / TM, K / TK * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {
      auto accA = bufA.get_access<access::mode::read_write>(cgh);

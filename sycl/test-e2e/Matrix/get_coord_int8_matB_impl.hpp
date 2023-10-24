@@ -102,12 +102,9 @@ void matrix_sum_cols(big_matrix<T, K, N> &B,
   int sum_cols[N] = {0};
   buffer<int> sum_cols_v(sum_cols, N);
 
-  size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
-  size_t NDRangeK = K / TK;
-  size_t NDRangeN = N / TN;
   queue q;
-  nd_range<2> r({NDRangeK, NDRangeN * wg_size}, {1, 1 * wg_size});
+  size_t wg_size = get_wg_size<imatrix>(q);
+  nd_range<2> r({K / TK, N / TN * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {
      auto accB = bufBvnni.get_access<access::mode::read_write>(cgh);

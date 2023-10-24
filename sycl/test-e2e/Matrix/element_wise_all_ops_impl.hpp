@@ -31,7 +31,6 @@ void verify_op_a(const T l, const T r, const float ref, OP op) {
 
   queue q;
   size_t wg_size = get_wg_size<kernel_name>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      sycl::accessor accessMat{bufMat, cgh, sycl::read_write};
@@ -75,7 +74,6 @@ void verify_op_c(const T l, const T r, const float ref, OP op) {
 
   queue q;
   size_t wg_size = get_wg_size<kernel_name>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      sycl::accessor accessMat{bufMat, cgh, sycl::read_write};

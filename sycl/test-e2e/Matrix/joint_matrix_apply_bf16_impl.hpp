@@ -1,26 +1,23 @@
 #define TM 8
 #define TK 16
 
-class imatrix;
-
 template <typename T> struct apply_add {
   void operator()(T &x) const { x = x + bfloat16(2); }
 };
 
-template <typename T, size_t M, size_t K, typename F>
+template <typename T, size_t M, size_t K, class kernel_name, typename F>
 void matrix_verify_add(big_matrix<T, M, K> &A, const float ref, F &&lambda) {
   buffer<bfloat16, 2> bufA(A.get_data(), range<2>(M, K));
 
   queue q;
-  size_t wg_size = get_wg_size<imatrix>(q);
-  std::cout << "WG Size = " << wg_size << "\n";
+  size_t wg_size = get_wg_size<kernel_name>(q);
   nd_range<2> r({M / TM, K / TK * wg_size}, {1, 1 * wg_size});
 
   q.submit([&](handler &cgh) {
      accessor accA{bufA, cgh};
 
-     cgh.parallel_for<class imatrix>(
-         r, [accA, lambda](nd_item<2> spmd_item)
+     cgh.parallel_for<kernel_name>(
+         r, [=](nd_item<2> spmd_item)
 #ifdef SG_SZ
                 [[intel::reqd_sub_group_size(SG_SZ)]]
 #endif
@@ -58,10 +55,10 @@ int main() {
   bfloat16 A[MATRIX_M][MATRIX_K];
   big_matrix<bfloat16, MATRIX_M, MATRIX_K> MA((bfloat16 *)&A);
 
-  matrix_verify_add<bfloat16, MATRIX_M, MATRIX_K>(
+  matrix_verify_add<bfloat16, MATRIX_M, MATRIX_K, class add1>(
       MA, 7.0, [=](bfloat16 &x) { x = x + bfloat16(2); });
-  matrix_verify_add<bfloat16, MATRIX_M, MATRIX_K>(MA, 7.0,
-                                                  apply_add<bfloat16>());
+  matrix_verify_add<bfloat16, MATRIX_M, MATRIX_K, class add2>(
+      MA, 7.0, apply_add<bfloat16>());
   std::cout << "Passed\n";
   return 0;
 }
