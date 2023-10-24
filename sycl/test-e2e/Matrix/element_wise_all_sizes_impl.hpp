@@ -1,5 +1,7 @@
 static constexpr size_t M_MULTIPLIER = 16;
 
+class imatrix;
+
 static float make_fp32(bfloat16 x) {
   unsigned int y = *((int *)&x);
   y = y << 16;
@@ -40,8 +42,12 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
 
   size_t NDRangeM = M / TM;
   size_t NDRangeK = K / TK;
+
   queue q;
-  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
+  size_t wg_size = get_wg_size<imatrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
+  nd_range<2> r({NDRangeM, NDRangeK * wg_size}, {1, 1 * wg_size});
   big_matrix<T, M, K> A((T *)&MatA);
 
   buffer<T, 2> bufA(A.get_data(), range<2>(M, K));
@@ -49,7 +55,7 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
 
-     cgh.parallel_for(
+     cgh.parallel_for<class imatrix>(
          r, [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
            const auto global_idx = spmd_item.get_global_id(0);
            const auto global_idy = spmd_item.get_global_id(1);
@@ -66,7 +72,7 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
            ext::intel::experimental::matrix::joint_matrix_store(
                sg, sub_a,
                accA.template get_multi_ptr<access::decorated::no>() +
-                   (sg_startx * TM) * K + sg_starty / SG_SZ * TK,
+                   (sg_startx * TM) * K + sg_starty / wg_size * TK,
                K);
          }); // parallel for
    }).wait();

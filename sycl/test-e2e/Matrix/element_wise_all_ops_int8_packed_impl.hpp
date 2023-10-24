@@ -1,6 +1,12 @@
 #define TM 8
 #define TK 32
 
+class add_matrix;
+class sub_matrix;
+class mul_matrix;
+class div_matrix;
+class logic_matrix;
+
 template <typename T, size_t NUM_ROWS, size_t NUM_COLS> struct big_matrix {
 public:
   T *mat;
@@ -24,6 +30,9 @@ template <typename T, size_t M, size_t N>
 void matrix_verify_add(queue q, big_matrix<T, M, N> &A, nd_range<2> &r,
                        const int ref) {
   buffer<int8_t, 2> bufB(A.get_data(), range<2>(M, N));
+
+  size_t wg_size = get_wg_size<add_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      auto accA = bufB.get_access<access::mode::read_write>(cgh);
@@ -58,6 +67,9 @@ void matrix_verify_sub(queue q, big_matrix<T, M, N> &A, nd_range<2> &r,
                        const int ref) {
   buffer<int8_t, 2> bufB(A.get_data(), range<2>(M, N));
 
+  size_t wg_size = get_wg_size<sub_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
   q.submit([&](handler &cgh) {
      auto accA = bufB.get_access<access::mode::read_write>(cgh);
 
@@ -90,6 +102,9 @@ template <typename T, size_t M, size_t N>
 void matrix_verify_mul(queue q, big_matrix<T, M, N> &A, nd_range<2> &r,
                        const int ref) {
   buffer<int8_t, 2> bufB(A.get_data(), range<2>(M, N));
+
+  size_t wg_size = get_wg_size<mul_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      auto accA = bufB.get_access<access::mode::read_write>(cgh);
@@ -124,6 +139,9 @@ void matrix_verify_div(queue q, big_matrix<T, M, N> &A, nd_range<2> &r,
                        const int ref) {
   buffer<int8_t, 2> bufB(A.get_data(), range<2>(M, N));
 
+  size_t wg_size = get_wg_size<div_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
   q.submit([&](handler &cgh) {
      auto accA = bufB.get_access<access::mode::read_write>(cgh);
 
@@ -156,6 +174,9 @@ template <typename T, size_t M, size_t N>
 void matrix_verify_logic(queue q, big_matrix<T, M, N> &A, nd_range<2> &r,
                          const int ref) {
   buffer<int8_t, 2> bufB(A.get_data(), range<2>(M, N));
+
+  size_t wg_size = get_wg_size<logic_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
      auto accA = bufB.get_access<access::mode::read_write>(cgh);

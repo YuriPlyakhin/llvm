@@ -9,6 +9,8 @@
 constexpr size_t TM = 8;
 constexpr size_t TK = 32;
 
+class imatrix;
+
 template <typename T, size_t M, size_t K>
 void sum_rows_ref(host_accessor<T, 2, access::mode::read_write> A,
                   host_accessor<int, 1, access::mode::read_write> sum_rows) {
@@ -71,17 +73,25 @@ W0 --> 0 0 1 1 2 2 3 3 .... 7 7
 // clang-format on
 
 template <typename T, size_t M, size_t K>
-void matrix_sum_rows(queue q, big_matrix<T, M, K> &A, nd_range<2> &r) {
+void matrix_sum_rows(big_matrix<T, M, K> &A) {
   buffer<int8_t, 2> bufA(A.get_data(), range<2>(M, K));
 
   // size of vector is equal to number of rows in big matrix
   int sum_rows[M] = {0};
   buffer<int> sum_rows_v(sum_rows, M);
+
+  size_t wg_size = get_wg_size<imatrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+  size_t NDRangeM = MATRIX_M / TM;
+  size_t NDRangeK = MATRIX_K / TK;
+  queue q;
+  nd_range<2> r({NDRangeM, NDRangeK * wg_size}, {1, 1 * wg_size});
+
   q.submit([&](handler &cgh) {
      auto accA = bufA.get_access<access::mode::read_write>(cgh);
      auto v = sum_rows_v.get_access<access::mode::atomic>(cgh);
 
-     cgh.parallel_for(r, [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(
+     cgh.parallel_for<class imatrix>(r, [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(
                              SG_SZ)]] {
        const auto global_idx = spmd_item.get_global_id(0);
        const auto global_idy = spmd_item.get_global_id(1);
@@ -92,7 +102,7 @@ void matrix_sum_rows(queue q, big_matrix<T, M, K> &A, nd_range<2> &r) {
        joint_matrix<sub_group, int8_t, use::a, TM, TK, layout::row_major> sub_a;
        joint_matrix_load(sg, sub_a,
                          accA.template get_multi_ptr<access::decorated::no>() +
-                             (sg_startx * TM * K) + sg_starty / SG_SZ * TK,
+                             (sg_startx * TM * K) + sg_starty / wg_size * TK,
                          K);
 
        int32_t sum_local_rows[M] = {0};
@@ -106,7 +116,7 @@ void matrix_sum_rows(queue q, big_matrix<T, M, K> &A, nd_range<2> &r) {
              reduce_over_group(sg, sum_local_rows[i], sycl::plus<>());
 
          // only Groups leader performs the global reduction
-         if (global_idy % SG_SZ == 0)
+         if (global_idy % wg_size == 0)
            atomic_fetch_add(v[i], sum_local_rows[i]);
        }
      }); // parallel for
@@ -121,18 +131,13 @@ int main() {
 
   big_matrix<int8_t, MATRIX_M, MATRIX_K> MA((int8_t *)&A);
 
-  size_t NDRangeM = MATRIX_M / TM;
-  size_t NDRangeK = MATRIX_K / TK;
-  queue q;
-  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
-
   for (int i = 0; i < MATRIX_M; i++) {
     for (int j = 0; j < MATRIX_K; j++) {
       A[i][j] = i + j;
     }
   }
 
-  matrix_sum_rows<int8_t, MATRIX_M, MATRIX_K>(q, MA, r);
+  matrix_sum_rows<int8_t, MATRIX_M, MATRIX_K>(MA);
   std::cout << "Passed\n";
   return 0;
 }

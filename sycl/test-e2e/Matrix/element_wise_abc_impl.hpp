@@ -6,14 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iostream>
-#include <sycl/sycl.hpp>
-
-using namespace sycl;
 using namespace sycl::ext::oneapi::experimental::matrix;
 
 #define TM 8
 #define TK 32
+
+class imatrix;
 
 template <typename T, size_t NUM_ROWS, size_t NUM_COLS> struct big_matrix {
 public:
@@ -36,12 +34,15 @@ void matrix_elem_wise_ops(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
   buffer<T1, 2> bufC(C.get_data(), range<2>(M, N));
 
   queue q;
+  size_t wg_size = get_wg_size<imatrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
   q.submit([&](handler &cgh) {
      accessor accC{bufC, cgh};
      accessor accA{bufA, cgh};
      accessor accB{bufB, cgh};
 
-     cgh.parallel_for(
+     cgh.parallel_for<class imatrix>(
          nd_range<2>({NDRangeM, NDRangeN * SG_SZ}, {1, 1 * SG_SZ}),
          [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
            // The submatrix API has to be accessed by all the workitems in a

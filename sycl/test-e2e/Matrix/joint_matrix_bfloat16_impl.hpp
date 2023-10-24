@@ -1,7 +1,7 @@
 #define TM 8
 #define TK 16
 
-class matrix;
+class imatrix;
 
 template <typename T1, typename T2, size_t M, size_t N, size_t K>
 void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
@@ -13,7 +13,7 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
   buffer<float, 2> bufC((float *)C.get_data(), range<2>(M, N));
 
   queue q;
-  size_t wg_size = get_wg_size<matrix>(q);
+  size_t wg_size = get_wg_size<imatrix>(q);
   std::cout << "WG Size = " << wg_size << "\n";
 
   q.submit([&](handler &cgh) {
@@ -21,7 +21,7 @@ void matrix_multiply(big_matrix<T1, M, N> &C, big_matrix<T2, M, K> &A,
      auto accA = bufA.get_access<access::mode::read_write>(cgh);
      auto accB = bufB.get_access<access::mode::read_write>(cgh);
 
-     cgh.parallel_for<class matrix>(
+     cgh.parallel_for<class imatrix>(
          nd_range<2>({NDRangeM, NDRangeN * wg_size}, {1, 1 * wg_size}),
          [=](nd_item<2> spmd_item)
 #ifdef SG_SZ

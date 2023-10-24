@@ -14,9 +14,6 @@
 
 #include "common.hpp"
 
-using namespace sycl;
 using namespace sycl::ext::oneapi::experimental::matrix;
-
-#define SG_SZ 16
 
 #include "joint_matrix_bfloat16_32x64_impl.hpp"

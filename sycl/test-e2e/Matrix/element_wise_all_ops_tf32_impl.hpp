@@ -1,6 +1,12 @@
 #define TM 8
 #define TK 8
 
+class add_matrix;
+class sub_matrix;
+class mul_matrix;
+class div_matrix;
+class logic_matrix;
+
 template <typename T, size_t NUM_ROWS, size_t NUM_COLS> struct big_matrix {
 public:
   T *mat;
@@ -21,10 +27,18 @@ void assert_ops_ref(host_accessor<T, 2, access::mode::read> C,
              std::numeric_limits<float>::epsilon());
     }
 }
+
 template <typename T, typename Ts, size_t M, size_t K>
 void matrix_verify_add(queue q, big_matrix<Ts, M, K> &A, nd_range<2> &r,
                        const float ref) {
   buffer<Ts, 2> bufA(A.get_data(), range<2>(M, K));
+
+  size_t wg_size = get_wg_size<add_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+  size_t NDRangeM = MATRIX_M / TM;
+  size_t NDRangeK = MATRIX_K / TK;
+  queue q;
+  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
 
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
@@ -59,6 +73,13 @@ void matrix_verify_sub(queue q, big_matrix<Ts, M, K> &A, nd_range<2> &r,
                        const float ref) {
   buffer<Ts, 2> bufA(A.get_data(), range<2>(M, K));
 
+  size_t wg_size = get_wg_size<sub_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+  size_t NDRangeM = MATRIX_M / TM;
+  size_t NDRangeK = MATRIX_K / TK;
+  queue q;
+  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
+
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
 
@@ -92,6 +113,13 @@ void matrix_verify_mul(queue q, big_matrix<Ts, M, K> &A, nd_range<2> &r,
                        const float ref) {
   buffer<Ts, 2> bufA(A.get_data(), range<2>(M, K));
 
+  size_t wg_size = get_wg_size<mul_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+  size_t NDRangeM = MATRIX_M / TM;
+  size_t NDRangeK = MATRIX_K / TK;
+  queue q;
+  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
+
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
 
@@ -122,6 +150,13 @@ template <typename T, typename Ts, size_t M, size_t K>
 void matrix_verify_div(queue q, big_matrix<Ts, M, K> &A, nd_range<2> &r,
                        const float ref) {
   buffer<Ts, 2> bufA(A.get_data(), range<2>(M, K));
+
+  size_t wg_size = get_wg_size<div_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+  size_t NDRangeM = MATRIX_M / TM;
+  size_t NDRangeK = MATRIX_K / TK;
+  queue q;
+  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
 
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
@@ -154,6 +189,13 @@ template <typename T, typename Ts, size_t M, size_t K>
 void matrix_verify_logic(queue q, big_matrix<Ts, M, K> &A, nd_range<2> &r,
                          const float ref) {
   buffer<Ts, 2> bufA(A.get_data(), range<2>(M, K));
+
+  size_t wg_size = get_wg_size<logic_matrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+  size_t NDRangeM = MATRIX_M / TM;
+  size_t NDRangeK = MATRIX_K / TK;
+  queue q;
+  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
 
   q.submit([&](handler &cgh) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
@@ -196,27 +238,17 @@ void matrix_verify_logic(queue q, big_matrix<Ts, M, K> &A, nd_range<2> &r,
   assert_ops_ref<Ts, M, K>(bufA.get_host_access(sycl::read_only), ref);
 }
 
-static constexpr size_t MATRIX_M = TM * 2;
-static constexpr size_t MATRIX_K = TK * 2;
-float A[MATRIX_M][MATRIX_K];
-float D[MATRIX_M][MATRIX_K];
-
 int main() {
-
-  big_matrix<float, MATRIX_M, MATRIX_K> MD((float *)&D);
+  static constexpr size_t MATRIX_M = TM * 2;
+  static constexpr size_t MATRIX_K = TK * 2;
+  float A[MATRIX_M][MATRIX_K];
   big_matrix<float, MATRIX_M, MATRIX_K> MA((float *)&A);
 
-  size_t NDRangeM = MATRIX_M / TM;
-  size_t NDRangeK = MATRIX_K / TK;
-  queue q;
-  nd_range<2> r({NDRangeM, NDRangeK * SG_SZ}, {1, 1 * SG_SZ});
-
-  matrix_verify_add<precision::tf32, float, MATRIX_M, MATRIX_K>(q, MA, r, 7.0);
-  matrix_verify_sub<precision::tf32, float, MATRIX_M, MATRIX_K>(q, MA, r, 3.0);
-  matrix_verify_mul<precision::tf32, float, MATRIX_M, MATRIX_K>(q, MA, r, 15.0);
-  matrix_verify_div<precision::tf32, float, MATRIX_M, MATRIX_K>(q, MA, r, 2.0);
-  matrix_verify_logic<precision::tf32, float, MATRIX_M, MATRIX_K>(q, MA, r,
-                                                                  7.0);
+  matrix_verify_add<precision::tf32, float, MATRIX_M, MATRIX_K>(MA, 7.0);
+  matrix_verify_sub<precision::tf32, float, MATRIX_M, MATRIX_K>(MA, 3.0);
+  matrix_verify_mul<precision::tf32, float, MATRIX_M, MATRIX_K>(MA, 15.0);
+  matrix_verify_div<precision::tf32, float, MATRIX_M, MATRIX_K>(MA, 2.0);
+  matrix_verify_logic<precision::tf32, float, MATRIX_M, MATRIX_K>(MA, 7.0);
 
   return 0;
 }

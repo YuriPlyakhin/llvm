@@ -6,6 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+class imatrix_a;
+class imatrix_c;
+
 static float make_fp32(bfloat16 x) {
   unsigned int y = *((int *)&x);
   y = y << 16;
@@ -47,9 +50,12 @@ void verify_op_a(const T l, const T r, const float ref, OP op) {
   buffer<T, 2> bufMat(big_mat.get_data(), range<2>(NUM_ROWS, NUM_COLS));
 
   queue q;
+  size_t wg_size = get_wg_size<imatrix_a>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
   q.submit([&](handler &cgh) {
      sycl::accessor accessMat{bufMat, cgh, sycl::read_write};
-     cgh.parallel_for(
+     cgh.parallel_for<class imatrix_a>(
          nd_range<2>({NUM_ROWS / SUB_ROWS, NUM_COLS / SUB_COLS * SG_SZ},
                      {1, 1 * SG_SZ}),
          [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
@@ -84,9 +90,12 @@ void verify_op_c(const T l, const T r, const float ref, OP op) {
   buffer<T, 2> bufMat(big_mat.get_data(), range<2>(NUM_ROWS, NUM_COLS));
 
   queue q;
+  size_t wg_size = get_wg_size<imatrix_c>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
   q.submit([&](handler &cgh) {
      sycl::accessor accessMat{bufMat, cgh, sycl::read_write};
-     cgh.parallel_for(
+     cgh.parallel_for<class imatrix_c>(
          nd_range<2>({NUM_ROWS / SUB_ROWS, NUM_COLS / SUB_COLS * SG_SZ},
                      {1, 1 * SG_SZ}),
          [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {

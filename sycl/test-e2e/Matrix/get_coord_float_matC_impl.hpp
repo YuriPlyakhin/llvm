@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 constexpr size_t TM = 8;
 
+class imatrix;
+
 // clang-format off
 /*
 Here's how the data is distributed for sub group size = 16 on PVC
@@ -25,12 +27,15 @@ void matrix_sum_rows(big_matrix<T1, M, N> &C, float *sum_rows) {
   buffer<float> sum_rows_v(sum_rows, M);
 
   queue q;
+  size_t wg_size = get_wg_size<imatrix>(q);
+  std::cout << "WG Size = " << wg_size << "\n";
+
   q.submit([&](handler &cgh) {
      auto accC = bufC.get_access<access::mode::read_write>(cgh);
      auto v = sum_rows_v.get_access<access::mode::read_write>(cgh);
 
-     cgh.parallel_for(
-         nd_range<2>({M / TM, N / TN * SG_SZ}, {1, 1 * SG_SZ}),
+     cgh.parallel_for<class imatrix>(
+         nd_range<2>({M / TM, N / TN * wg_size}, {1, 1 * wg_size}),
          [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
            // The submatrix API has to be accessed by all the workitems in a
            // subgroup these functions will be called once by the subgroup no
@@ -46,7 +51,7 @@ void matrix_sum_rows(big_matrix<T1, M, N> &C, float *sum_rows) {
            joint_matrix_load(
                sg, sub_c,
                accC.template get_multi_ptr<access::decorated::no>() +
-                   (sg_startx * TM) * N + sg_starty / SG_SZ * TN,
+                   (sg_startx * TM) * N + sg_starty / wg_size * TN,
                N, layout::row_major);
 
            float sum_local_rows[M] = {0};
@@ -59,7 +64,7 @@ void matrix_sum_rows(big_matrix<T1, M, N> &C, float *sum_rows) {
              sum_local_rows[i] =
                  reduce_over_group(sg, sum_local_rows[i], sycl::plus<>());
              // only Groups leader perform the global reduction
-             if (global_idy % SG_SZ == 0) {
+             if (global_idy % wg_size == 0) {
                sycl::atomic_ref<float, sycl::memory_order::relaxed,
                                 sycl::memory_scope::device>
                    aref(v[i]);
