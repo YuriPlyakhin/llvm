@@ -29,8 +29,10 @@ void matrix_multiply(T1 *C, T2 *A, T2 *B, queue q, unsigned int vnniFactor) {
   q.submit([&](handler &cgh) {
      cgh.parallel_for<class imatrix>(
          nd_range<2>({NDRangeM, NDRangeN * wg_size}, {1, 1 * wg_size}),
-         [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]]
-
+         [=](nd_item<2> spmd_item)
+#ifdef SG_SZ
+             [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
          {
            // The submatrix API has to be accessed by all the workitems in a
            // subgroup these functions will be called once by the subgroup no
@@ -50,20 +52,20 @@ void matrix_multiply(T1 *C, T2 *A, T2 *B, queue q, unsigned int vnniFactor) {
                         layout::ext_intel_packed>
                sub_b;
            joint_matrix<sub_group, float, use::accumulator, TM, TN> sub_c;
-           joint_matrix_load(sg, sub_c,
-                             pC + (sg_startx * TM) * N + sg_starty / wg_size * TN,
-                             N, layout::col_major);
+           joint_matrix_load(
+               sg, sub_c, pC + (sg_startx * TM) * N + sg_starty / wg_size * TN,
+               N, layout::col_major);
            for (int k = 0; k < K; k += TK) {
              joint_matrix_load(sg, sub_a, pA + (sg_startx * TM) * K + k, K);
              // Assume we alreay in vnni format.
-             joint_matrix_load(sg, sub_b,
-                               pB + k * N + sg_starty / wg_size * TN * vnniFactor,
-                               N * vnniFactor);
+             joint_matrix_load(
+                 sg, sub_b, pB + k * N + sg_starty / wg_size * TN * vnniFactor,
+                 N * vnniFactor);
              joint_matrix_mad(sg, sub_c, sub_a, sub_b, sub_c);
            }
            joint_matrix_store(
-               sg, sub_c, pC + (sg_startx * TM) * N + sg_starty / wg_size * TN, N,
-               layout::col_major);
+               sg, sub_c, pC + (sg_startx * TM) * N + sg_starty / wg_size * TN,
+               N, layout::col_major);
          }); // parallel for
    }).wait();
 }

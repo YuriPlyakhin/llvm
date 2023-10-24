@@ -92,7 +92,11 @@ double joint_matmul(TOperand *A, TOperand *B, TResult *C, queue &q, int i) {
         nd_range<2>{global, cachelocal},
         // loop global
         // loop localrange
-        [=](nd_item<2> it) [[intel::reqd_sub_group_size(SG_SZ)]] {
+        [=](nd_item<2> it)
+#ifdef SG_SZ
+            [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
+        {
           auto m2 = it.get_group(0);
           auto n2 = it.get_group(1);
           auto m1 = it.get_local_id(0);

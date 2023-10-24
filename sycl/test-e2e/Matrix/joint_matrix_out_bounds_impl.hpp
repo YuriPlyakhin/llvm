@@ -31,8 +31,10 @@ void matrix_multiply(T1 *C, T2 *A, T2 *B, queue q, unsigned int vnniFactor) {
   q.submit([&](handler &cgh) {
      cgh.parallel_for<class imatrix>(
          nd_range<2>({NDRangeM, NDRangeN * wg_size}, {1, 1 * wg_size}),
-         [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]]
-
+         [=](nd_item<2> spmd_item)
+#ifdef SG_SZ
+             [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
          {
            // The submatrix API has to be accessed by all the workitems in a
            // subgroup these functions will be called once by the subgroup no
@@ -67,8 +69,8 @@ void matrix_multiply(T1 *C, T2 *A, T2 *B, queue q, unsigned int vnniFactor) {
            }
            // bounds-checked store where width and height are added
            joint_matrix_store_checked(
-               sg, sub_c, pC + (sg_startx * TM) * N + sg_starty / wg_size * TN, N,
-               layout::row_major, M, N);
+               sg, sub_c, pC + (sg_startx * TM) * N + sg_starty / wg_size * TN,
+               N, layout::row_major, M, N);
          }); // parallel for
    }).wait();
 }

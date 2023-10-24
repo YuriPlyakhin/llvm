@@ -56,7 +56,11 @@ void matrix_verify_add(const T1 val1, const T1 val2, const T1 result) {
      sycl::accessor accA{bufA, cgh, sycl::read_write};
 
      cgh.parallel_for<class imatrix>(
-         r, [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
+         r, [=](nd_item<2> spmd_item)
+#ifdef SG_SZ
+                [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
+         {
            const auto global_idx = spmd_item.get_global_id(0);
            const auto global_idy = spmd_item.get_global_id(1);
            const auto sg_startx = global_idx - spmd_item.get_local_id(0);

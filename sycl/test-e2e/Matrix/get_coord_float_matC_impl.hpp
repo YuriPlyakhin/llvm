@@ -36,7 +36,11 @@ void matrix_sum_rows(big_matrix<T1, M, N> &C, float *sum_rows) {
 
      cgh.parallel_for<class imatrix>(
          nd_range<2>({M / TM, N / TN * wg_size}, {1, 1 * wg_size}),
-         [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
+         [=](nd_item<2> spmd_item)
+#ifdef SG_SZ
+             [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
+         {
            // The submatrix API has to be accessed by all the workitems in a
            // subgroup these functions will be called once by the subgroup no
            // code divergence between the workitems

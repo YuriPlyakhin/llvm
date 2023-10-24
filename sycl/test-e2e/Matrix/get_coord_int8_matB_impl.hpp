@@ -113,43 +113,47 @@ void matrix_sum_cols(big_matrix<T, K, N> &B,
      auto accB = bufBvnni.get_access<access::mode::read_write>(cgh);
      auto v = sum_cols_v.get_access<access::mode::atomic>(cgh);
 
-     cgh.parallel_for<class imatrix>(r, [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(
-                             SG_SZ)]] {
-       const auto global_idx = spmd_item.get_global_id(0);
-       const auto global_idy = spmd_item.get_global_id(1);
-       const auto sg_startx = global_idx - spmd_item.get_local_id(0);
-       const auto sg_starty = global_idy - spmd_item.get_local_id(1);
+     cgh.parallel_for<class imatrix>(
+         r, [=](nd_item<2> spmd_item)
+#ifdef SG_SZ
+                [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
+         {
+           const auto global_idx = spmd_item.get_global_id(0);
+           const auto global_idy = spmd_item.get_global_id(1);
+           const auto sg_startx = global_idx - spmd_item.get_local_id(0);
+           const auto sg_starty = global_idy - spmd_item.get_local_id(1);
 
-       sycl::sub_group sg = spmd_item.get_sub_group();
+           sycl::sub_group sg = spmd_item.get_sub_group();
 
-       joint_matrix<sub_group, int8_t, use::b, TK, TN, layout::ext_intel_packed>
-           sub_b;
+           joint_matrix<sub_group, int8_t, use::b, TK, TN,
+                        layout::ext_intel_packed>
+               sub_b;
 
-       joint_matrix_load(sg, sub_b,
-                         accB.template get_multi_ptr<access::decorated::no>() +
-                             (sg_startx * (TK / VF) * N * VF) +
-                             sg_starty / wg_size * TN * VF,
-                         N * VF);
+           joint_matrix_load(
+               sg, sub_b,
+               accB.template get_multi_ptr<access::decorated::no>() +
+                   (sg_startx * (TK / VF) * N * VF) +
+                   sg_starty / wg_size * TN * VF,
+               N * VF);
 
-       int32_t sum_local_cols[N] = {0};
-       ext::intel::experimental::matrix::joint_matrix_apply(
-           sg, sub_b, [&](int8_t &x, size_t row, size_t col) {
-             // the coordinates returned are in the logical range [K,N]
-             // If users want to retrieve the VNNIed coordinates, they can be
-             // obtained using
-             // colVNNI = col/VF
-             // rowVNNI = row*VF
-             size_t global_index = col + global_idy / wg_size * TN;
-             sum_local_cols[global_index] += x;
-           });
+           int32_t sum_local_cols[N] = {0};
+           ext::intel::experimental::matrix::joint_matrix_apply(
+               sg, sub_b, [&](int8_t &x, size_t row, size_t col) {
+                 // the coordinates returned are in the logical range [K,N]
+                 // If users want to retrieve the VNNIed coordinates, they can
+                 // be obtained using colVNNI = col/VF rowVNNI = row*VF
+                 size_t global_index = col + global_idy / wg_size * TN;
+                 sum_local_cols[global_index] += x;
+               });
 
-       for (int i = 0; i < N; i++) {
-         sum_local_cols[i] =
-             reduce_over_group(sg, sum_local_cols[i], sycl::plus<>());
-         if (global_idy % wg_size == 0)
-           atomic_fetch_add(v[i], sum_local_cols[i]);
-       }
-     }); // parallel for
+           for (int i = 0; i < N; i++) {
+             sum_local_cols[i] =
+                 reduce_over_group(sg, sum_local_cols[i], sycl::plus<>());
+             if (global_idy % wg_size == 0)
+               atomic_fetch_add(v[i], sum_local_cols[i]);
+           }
+         }); // parallel for
    }).wait();
   sum_cols_ref<T, K, N>(bufB.get_host_access(), sum_cols_v.get_host_access());
 }

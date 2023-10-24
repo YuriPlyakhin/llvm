@@ -91,35 +91,41 @@ void matrix_sum_rows(big_matrix<T, M, K> &A) {
      auto accA = bufA.get_access<access::mode::read_write>(cgh);
      auto v = sum_rows_v.get_access<access::mode::atomic>(cgh);
 
-     cgh.parallel_for<class imatrix>(r, [=](nd_item<2> spmd_item) [[intel::reqd_sub_group_size(
-                             SG_SZ)]] {
-       const auto global_idx = spmd_item.get_global_id(0);
-       const auto global_idy = spmd_item.get_global_id(1);
-       const auto sg_startx = global_idx - spmd_item.get_local_id(0);
-       const auto sg_starty = global_idy - spmd_item.get_local_id(1);
+     cgh.parallel_for<class imatrix>(
+         r, [=](nd_item<2> spmd_item)
+#ifdef SG_SZ
+                [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
+         {
+           const auto global_idx = spmd_item.get_global_id(0);
+           const auto global_idy = spmd_item.get_global_id(1);
+           const auto sg_startx = global_idx - spmd_item.get_local_id(0);
+           const auto sg_starty = global_idy - spmd_item.get_local_id(1);
 
-       sycl::sub_group sg = spmd_item.get_sub_group();
-       joint_matrix<sub_group, int8_t, use::a, TM, TK, layout::row_major> sub_a;
-       joint_matrix_load(sg, sub_a,
-                         accA.template get_multi_ptr<access::decorated::no>() +
-                             (sg_startx * TM * K) + sg_starty / wg_size * TK,
-                         K);
+           sycl::sub_group sg = spmd_item.get_sub_group();
+           joint_matrix<sub_group, int8_t, use::a, TM, TK, layout::row_major>
+               sub_a;
+           joint_matrix_load(
+               sg, sub_a,
+               accA.template get_multi_ptr<access::decorated::no>() +
+                   (sg_startx * TM * K) + sg_starty / wg_size * TK,
+               K);
 
-       int32_t sum_local_rows[M] = {0};
+           int32_t sum_local_rows[M] = {0};
 
-       ext::intel::experimental::matrix::joint_matrix_apply(
-           sg, sub_a, [&](int8_t &x, size_t row, size_t col) {
-             sum_local_rows[row + global_idx * TM] += x;
-           });
-       for (int i = 0; i < M; ++i) {
-         sum_local_rows[i] =
-             reduce_over_group(sg, sum_local_rows[i], sycl::plus<>());
+           ext::intel::experimental::matrix::joint_matrix_apply(
+               sg, sub_a, [&](int8_t &x, size_t row, size_t col) {
+                 sum_local_rows[row + global_idx * TM] += x;
+               });
+           for (int i = 0; i < M; ++i) {
+             sum_local_rows[i] =
+                 reduce_over_group(sg, sum_local_rows[i], sycl::plus<>());
 
-         // only Groups leader performs the global reduction
-         if (global_idy % wg_size == 0)
-           atomic_fetch_add(v[i], sum_local_rows[i]);
-       }
-     }); // parallel for
+             // only Groups leader performs the global reduction
+             if (global_idy % wg_size == 0)
+               atomic_fetch_add(v[i], sum_local_rows[i]);
+           }
+         }); // parallel for
    }).wait();
   sum_rows_ref<T, M, K>(bufA.get_host_access(), sum_rows_v.get_host_access());
 }

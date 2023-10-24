@@ -37,8 +37,11 @@ void matrix_verify_add(big_matrix<T, M, K> &A, const float ref, F &&lambda) {
      accessor accA{bufA, cgh};
 
      cgh.parallel_for<class imatrix>(
-         r, [accA, lambda](
-                nd_item<2> spmd_item) [[intel::reqd_sub_group_size(SG_SZ)]] {
+         r, [accA, lambda](nd_item<2> spmd_item)
+#ifdef SG_SZ
+                [[intel::reqd_sub_group_size(SG_SZ)]]
+#endif
+         {
            const auto global_idx = spmd_item.get_global_id(0);
            const auto global_idy = spmd_item.get_global_id(1);
            const auto sg_startx = global_idx - spmd_item.get_local_id(0);
