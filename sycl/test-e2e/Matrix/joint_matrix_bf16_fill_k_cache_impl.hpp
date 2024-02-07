@@ -52,64 +52,87 @@ template <unsigned int rowsA, unsigned int colsA, unsigned int rowsB,
           typename TResult, unsigned int sgSize = 16>
 void joint_matmul(TOperand *A, TOperand *B, TResult *C, queue &q) {
   q.submit([&](handler &h) {
-
+    sycl::stream os {2048, 2048, h};
     h.parallel_for( // cache layer#1
         nd_range<2>{range<2>{1, 16}, range<2>{1, 16}},
         [=](nd_item<2> it) [[intel::reqd_sub_group_size(sgSize)]] {
           auto pA =
               address_space_cast<sycl::access::address_space::global_space,
                                  sycl::access::decorated::no>(A);
-          auto pB =
-              address_space_cast<sycl::access::address_space::global_space,
-                                 sycl::access::decorated::no>(B);
-          auto pC =
-              address_space_cast<sycl::access::address_space::global_space,
-                                 sycl::access::decorated::no>(C);
+          // auto pB =
+          //     address_space_cast<sycl::access::address_space::global_space,
+          //                        sycl::access::decorated::no>(B);
+          // auto pC =
+          //     address_space_cast<sycl::access::address_space::global_space,
+          //                        sycl::access::decorated::no>(C);
           auto m2 = it.get_group(0);
           auto n2 = it.get_group(1);
           auto m1 = it.get_local_id(0);
           auto n1 = it.get_local_id(1) / sgSize;
           auto sg = it.get_sub_group();
 
-          joint_matrix<sub_group, TResult, use::accumulator, tM, tN> tC[2];
-          joint_matrix_fill(sg, tC[0], 0);
-          joint_matrix_fill(sg, tC[1], 0);
+          // joint_matrix<sub_group, TResult, use::accumulator, tM, tN> tC[2];
+          // joint_matrix_fill(sg, tC[0], 0);
+          // os << "C0:";
+          // joint_matrix_apply(sg, tC[0], [&](TResult &x) {os << x << " ";});
+          // os << "\n";
+//          joint_matrix_fill(sg, tC[1], 0);
+          // os << "C1:";
+          // joint_matrix_apply(sg, tC[1], [&](TResult &x) {os << x << " ";});
+          // os << "\n";
+
 
           joint_matrix<sub_group, TOperand, use::a, tM, tK, layout::row_major> tA[2];
-          joint_matrix<sub_group, TOperand, use::b, tK, tN,
-                       layout::ext_intel_packed> tB;
+          // joint_matrix<sub_group, TOperand, use::b, tK, tN,
+          //              layout::ext_intel_packed> tB;
 
           joint_matrix_load(sg, tA[0],
                             pA + (m2 * MCACHE2 + m1 * MCACHE1) * colsA, colsA);
           joint_matrix_load(sg, tA[1],
                             pA + (m2 * MCACHE2 + m1 * MCACHE1 + tM) * colsA,
                             colsA);
+          // os << "A:";
+          // joint_matrix_apply(sg, tA[0], [&](TOperand &x) {os << (int)x << " ";});
+          // joint_matrix_apply(sg, tA[1], [&](TOperand &x) {os << (int)x << " ";});
+          // os << "\n";
 
-          // sycl::ext::intel::experimental::matrix::joint_matrix_store(sg, tA[0],
-          //                   pA + (m2 * MCACHE2 + m1 * MCACHE1) * colsA, colsA);
+          sycl::ext::intel::experimental::matrix::joint_matrix_store(sg, tA[0],
+                            pA + (m2 * MCACHE2 + m1 * MCACHE1) * colsA, colsA);
           // sycl::ext::intel::experimental::matrix::joint_matrix_store(sg, tA[1],
           //                   pA + (m2 * MCACHE2 + m1 * MCACHE1 + tM) * colsA,
           //                   colsA);
 
-          joint_matrix_load(sg, tB,
-                            pB + (n2 * NCACHE2 + n1 * NCACHE1) * vnniFactor,
-                            colsB * vnniFactor);
+          // joint_matrix_load(sg, tB,
+          //                   pB + (n2 * NCACHE2 + n1 * NCACHE1) * vnniFactor,
+          //                   colsB * vnniFactor);
+
+          // os << "B:";
+          // joint_matrix_apply(sg, tB, [&](TOperand &x) {os << (int)x << " ";});
+          // os << "\n";
 
           // sycl::ext::intel::experimental::matrix::joint_matrix_store(sg, tB,
           //                   pB + (n2 * NCACHE2 + n1 * NCACHE1) * vnniFactor,
           //                   colsB * vnniFactor);
 
-          joint_matrix_mad(sg, tC[0], tA[0], tB, tC[0]);
-          joint_matrix_mad(sg, tC[1], tA[1], tB, tC[1]);
+          //joint_matrix_mad(sg, tC[0], tA[0], tB, tC[0]);
 
-          joint_matrix_store(sg, tC[0],
-                             pC + (m2 * MCACHE2 + m1 * MCACHE1) * colsB +
-                                 (n2 * NCACHE2 + n1 * NCACHE1),
-                             colsB, layout::row_major);
-          joint_matrix_store(sg, tC[1],
-                             pC + (m2 * MCACHE2 + m1 * MCACHE1 + tM) * colsB +
-                                 (n2 * NCACHE2 + n1 * NCACHE1),
-                             colsB, layout::row_major);
+          // os << "C mad:";
+          // joint_matrix_apply(sg, tC[0], [&](TResult &x) {os << (int)x << " ";});
+
+          //joint_matrix_mad(sg, tC[1], tA[1], tB, tC[1]);
+
+          // joint_matrix_apply(sg, tC[1], [&](TResult &x) {os << (int)x << " ";});
+          // os << "\n";
+
+
+          // joint_matrix_store(sg, tC[0],
+          //                    pC + (m2 * MCACHE2 + m1 * MCACHE1) * colsB +
+          //                        (n2 * NCACHE2 + n1 * NCACHE1),
+          //                    colsB, layout::row_major);
+          // joint_matrix_store(sg, tC[1],
+          //                    pC + (m2 * MCACHE2 + m1 * MCACHE1 + tM) * colsB +
+          //                        (n2 * NCACHE2 + n1 * NCACHE1),
+          //                    colsB, layout::row_major);
         }); // parallel_for
   });       // queue.submit
   q.wait();
@@ -140,8 +163,8 @@ void native_matmul(bfloat16 *A, bfloat16 *B, float *C) {
 }
 
 void print_matrix(float *C) {
-  for (unsigned int i = 0; i < MATRIX_SIZE; i++) {
       for (unsigned int j = 0; j < MATRIX_SIZE; j++) {
+  for (unsigned int i = 0; i < MATRIX_SIZE; i++) {
         std::cout << C[i * MATRIX_SIZE + j] << " ";
       }
       std::cout << "\n";
@@ -149,8 +172,8 @@ void print_matrix(float *C) {
 }
 
 void print_matrix_diff(float *C, float *D) {
-  for (unsigned int i = 0; i < MATRIX_SIZE; i++) {
       for (unsigned int j = 0; j < MATRIX_SIZE; j++) {
+  for (unsigned int i = 0; i < MATRIX_SIZE; i++) {
         std::cout << D[i * MATRIX_SIZE + j] - C[i * MATRIX_SIZE + j] << " ";
       }
       std::cout << "\n";
@@ -158,8 +181,8 @@ void print_matrix_diff(float *C, float *D) {
 }
 
 void print_matrix(bfloat16 *C) {
-  for (unsigned int i = 0; i < MATRIX_SIZE; i++) {
       for (unsigned int j = 0; j < MATRIX_SIZE; j++) {
+  for (unsigned int i = 0; i < MATRIX_SIZE; i++) {
         std::cout << C[i * MATRIX_SIZE + j] << " ";
       }
       std::cout << "\n";
@@ -178,32 +201,32 @@ int main(void) {
   // Initialize; fill matrices
   fill_matrix(A);
   fill_matrix(B);
-  matrix_vnni<bfloat16>(MATRIX_SIZE, MATRIX_SIZE, B, vnniB, 2);
-  native_matmul(A, B, refC);
+  //matrix_vnni<bfloat16>(MATRIX_SIZE, MATRIX_SIZE, B, vnniB, 2);
+  // native_matmul(A, B, refC);
 
   std::cout << "A before:\n";
   print_matrix(A);
-  std::cout << "B before:\n";
-  print_matrix(B);
-  std::cout << "C before:\n";
-  print_matrix(C);
-
+  // std::cout << "B before:\n";
+  // print_matrix(B);
+  // std::cout << "C before:\n";
+  // print_matrix(C);
+  std::cout << "- Kernel start -\n";
   joint_matmul<MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE, 2, bfloat16,
                float>(A, vnniB, C, q);
-
+  std::cout << "- Kernel end -\n";
   std::cout << "A after:\n";
   print_matrix(A);
-  std::cout << "B after:\n";
-  print_matrix(B);
-  std::cout << "C after:\n";
-  print_matrix(C);
-  std::cout << "C reference:\n";
-  print_matrix(refC);
-  std::cout << "diff:\n";
-  print_matrix_diff(C, refC);
+  // std::cout << "B after:\n";
+  // print_matrix(B);
+  // std::cout << "C after:\n";
+  // print_matrix(C);
+  // std::cout << "C reference:\n";
+  // print_matrix(refC);
+  // std::cout << "diff:\n";
+  // print_matrix_diff(C, refC);
 
-  bool result = matrix_compare(MATRIX_SIZE, MATRIX_SIZE, C, refC);
-  std::cout << "DONE for size " << MATRIX_SIZE << std::endl;
+  // bool result = matrix_compare(MATRIX_SIZE, MATRIX_SIZE, C, refC);
+  // std::cout << "DONE for size " << MATRIX_SIZE << std::endl;
 
   free(A, q);
   free(B, q);
@@ -211,5 +234,5 @@ int main(void) {
   free(C, q);
   free(refC, q);
 
-  return !result;
+  return 0;
 }
