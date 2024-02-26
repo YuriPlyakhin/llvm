@@ -1,3 +1,18 @@
+// INTEL_CUSTOMIZATION
+//
+// Copyright (C) 2023 Intel Corporation
+//
+// This software and the related documents are Intel copyrighted materials, and
+// your use of them is governed by the express license under which they were
+// provided to you ("License"). Unless the License provides otherwise, you may
+// not use, modify, copy, publish, distribute, disclose or transmit this
+// software or the related documents without Intel's prior written permission.
+//
+// This software and the related documents are provided as is, with no express
+// or implied warranties, other than those that are expressly stated in the
+// License.
+//
+// end INTEL_CUSTOMIZATION
 //==----------- bindless_images.hpp --- SYCL bindless images ---------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -40,17 +55,39 @@ struct unsampled_image_handle {
   raw_image_handle_type raw_handle;
 };
 
+struct combined_sampled_image_handle {
+  uint64_t raw_image_handle;
+  uint64_t raw_sampler_handle;
+};
+
 /// Opaque sampled image handle type.
 struct sampled_image_handle {
-  using raw_image_handle_type = pi_uint64;
+  using raw_sampled_image_handle_type = combined_sampled_image_handle;
 
-  sampled_image_handle() : raw_handle(~0) {}
+  sampled_image_handle(raw_sampled_image_handle_type raw_sampled_image_handle)
+      : raw_sampled_image_handle(raw_sampled_image_handle) {}
 
-  sampled_image_handle(raw_image_handle_type raw_image_handle)
-      : raw_handle(raw_image_handle) {}
-
-  raw_image_handle_type raw_handle;
+  raw_sampled_image_handle_type raw_sampled_image_handle;
 };
+
+/* INTEL_CUSTOMIZATION */
+// Image types used for generating SPIR-V
+#ifdef __SYCL_DEVICE_ONLY__
+template <int NDims>
+using OCLImageTyRead =
+    typename sycl::detail::opencl_image_type<NDims, sycl::access::mode::read,
+                                             sycl::access::target::image>::type;
+
+template <int NDims>
+using OCLImageTyWrite =
+    typename sycl::detail::opencl_image_type<NDims, sycl::access::mode::write,
+                                             sycl::access::target::image>::type;
+
+template <int NDims>
+using OCLSampledImageTy = typename sycl::detail::sampled_opencl_image_type<
+    OCLImageTyRead<NDims>>::type;
+#endif
+/* end INTEL_CUSTOMIZATION */
 
 /**
  *  @brief   Allocate image memory based on image_descriptor
@@ -754,6 +791,38 @@ template <typename DataT> constexpr bool is_recognized_standard_type() {
           std::is_floating_point_v<DataT> || std::is_same_v<DataT, sycl::half>);
 }
 
+/* INTEL_CUSTOMIZATION */
+#ifdef __SYCL_DEVICE_ONLY__
+template <typename ImageType, typename T>
+constexpr auto convert_handle_to_image(T raw_handle) {
+#if defined(__NVPTX__)
+  return raw_handle;
+#elif defined(__SPIR__)
+  return __spirv_ConvertHandleToImageINTEL<ImageType>(raw_handle);
+#else
+  assert(false && "Unsupported backend!");
+#endif
+}
+
+template <typename ImageType, typename T>
+constexpr auto convert_handle_to_sampled_image(T raw_handle) {
+#if defined(__NVPTX__)
+  return raw_handle.raw_sampled_image_handle.raw_image_handle;
+#elif defined(__SPIR__)
+  using SmpImageT =
+      typename sycl::detail::sampled_opencl_image_type<ImageType>::type;
+  return __spirv_SampledImage<ImageType, SmpImageT>(
+      __spirv_ConvertHandleToImageINTEL<ImageType>(
+          raw_handle.raw_sampled_image_handle.raw_image_handle),
+      __spirv_ConvertHandleToSamplerINTEL<__ocl_sampler_t>(
+          raw_handle.raw_sampled_image_handle.raw_sampler_handle));
+#else
+  assert(false && "Unsupported backend!");
+#endif
+}
+#endif
+/* end INTEL_CUSTOMIZATION */
+
 } // namespace detail
 
 /**
@@ -814,16 +883,37 @@ DataT fetch_image(const unsampled_image_handle &imageHandle [[maybe_unused]],
                 "for 1D, 2D and 3D images, respectively.");
 
 #ifdef __SYCL_DEVICE_ONLY__
+/* INTEL_CUSTOMIZATION */
+  [[maybe_unused]] constexpr size_t NDims = (coordSize == 4) ? 3 : coordSize;
+/* end INTEL_CUSTOMIZATION */
   if constexpr (detail::is_recognized_standard_type<DataT>()) {
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return __invoke__ImageRead<DataT>(imageHandle.raw_handle, coords);
+/* INTEL_CUSTOMIZATION */
+#else
+    return __invoke__ImageRead<DataT>(
+        detail::convert_handle_to_image<OCLImageTyRead<NDims>>(
+            imageHandle.raw_handle),
+        coords);
+#endif
+/* end INTEL_CUSTOMIZATION */
   } else {
     static_assert(sizeof(HintT) == sizeof(DataT),
                   "When trying to read a user-defined type, HintT must be of "
                   "the same size as the user-defined DataT.");
     static_assert(detail::is_recognized_standard_type<HintT>(),
                   "HintT must always be a recognized standard type");
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return sycl::bit_cast<DataT>(
         __invoke__ImageRead<HintT>(imageHandle.raw_handle, coords));
+/* INTEL_CUSTOMIZATION */
+#else
+    return sycl::bit_cast<DataT>(__invoke__ImageRead<HintT>(
+        detail::convert_handle_to_image<OCLImageTyRead<NDims>>(
+            imageHandle.raw_handle),
+        coords));
+#endif
+/* end INTEL_CUSTOMIZATION */
   }
 #else
   assert(false); // Bindless images not yet implemented on host
@@ -888,16 +978,37 @@ DataT sample_image(const sampled_image_handle &imageHandle [[maybe_unused]],
                 "for 1D, 2D and 3D images, respectively.");
 
 #ifdef __SYCL_DEVICE_ONLY__
+/* INTEL_CUSTOMIZATION */
+  [[maybe_unused]] constexpr size_t NDims = (coordSize == 4) ? 3 : coordSize;
+/* end INTEL_CUSTOMIZATION */
   if constexpr (detail::is_recognized_standard_type<DataT>()) {
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return __invoke__ImageRead<DataT>(imageHandle.raw_handle, coords);
+/* INTEL_CUSTOMIZATION */
+#else
+    return __invoke__ImageRead<DataT>(
+        detail::convert_handle_to_sampled_image<OCLImageTyRead<NDims>>(
+            imageHandle),
+        coords);
+#endif
+/* end INTEL_CUSTOMIZATION */
   } else {
     static_assert(sizeof(HintT) == sizeof(DataT),
                   "When trying to read a user-defined type, HintT must be of "
                   "the same size as the user-defined DataT.");
     static_assert(detail::is_recognized_standard_type<HintT>(),
                   "HintT must always be a recognized standard type");
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return sycl::bit_cast<DataT>(
         __invoke__ImageRead<HintT>(imageHandle.raw_handle, coords));
+/* INTEL_CUSTOMIZATION */
+#else
+    return sycl::bit_cast<DataT>(__invoke__ImageRead<HintT>(
+        detail::convert_handle_to_sampled_image<OCLImageTyRead<NDims>>(
+            imageHandle),
+        coords));
+#endif
+/* end INTEL_CUSTOMIZATION */
   }
 #else
   assert(false); // Bindless images not yet implemented on host.
@@ -982,16 +1093,37 @@ DataT sample_mipmap(const sampled_image_handle &imageHandle [[maybe_unused]],
                 "for 1D, 2D and 3D images, respectively.");
 
 #ifdef __SYCL_DEVICE_ONLY__
+/* INTEL_CUSTOMIZATION */
+  [[maybe_unused]] constexpr size_t NDims = (coordSize == 4) ? 3 : coordSize;
+/* end INTEL_CUSTOMIZATION */
   if constexpr (detail::is_recognized_standard_type<DataT>()) {
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return __invoke__ImageReadLod<DataT>(imageHandle.raw_handle, coords, level);
+/* INTEL_CUSTOMIZATION */
+#else
+    return __invoke__ImageReadLod<DataT>(
+        detail::convert_handle_to_sampled_image<OCLImageTyRead<NDims>>(
+            imageHandle),
+        coords, level);
+#endif
+/* end INTEL_CUSTOMIZATION */
   } else {
     static_assert(sizeof(HintT) == sizeof(DataT),
                   "When trying to read a user-defined type, HintT must be of "
                   "the same size as the user-defined DataT.");
     static_assert(detail::is_recognized_standard_type<HintT>(),
                   "HintT must always be a recognized standard type");
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return sycl::bit_cast<DataT>(
         __invoke__ImageReadLod<HintT>(imageHandle.raw_handle, coords, level));
+/* INTEL_CUSTOMIZATION */
+#else
+    return sycl::bit_cast<DataT>(__invoke__ImageReadLod<HintT>(
+        detail::convert_handle_to_sampled_image<OCLImageTyRead<NDims>>(
+            imageHandle),
+        coords, level));
+#endif
+/* end INTEL_CUSTOMIZATION */
   }
 #else
   assert(false); // Bindless images not yet implemented on host
@@ -1026,17 +1158,38 @@ DataT sample_mipmap(const sampled_image_handle &imageHandle [[maybe_unused]],
                 "components for 1D, 2D, and 3D images, respectively.");
 
 #ifdef __SYCL_DEVICE_ONLY__
+/* INTEL_CUSTOMIZATION */
+  [[maybe_unused]] constexpr size_t NDims = (coordSize == 4) ? 3 : coordSize;
+/* end INTEL_CUSTOMIZATION */
   if constexpr (detail::is_recognized_standard_type<DataT>()) {
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return __invoke__ImageReadGrad<DataT>(imageHandle.raw_handle, coords, dX,
                                           dY);
+/* INTEL_CUSTOMIZATION */
+#else
+    return __invoke__ImageReadGrad<DataT>(
+        detail::convert_handle_to_sampled_image<OCLImageTyRead<NDims>>(
+            imageHandle),
+        coords, dX, dY);
+#endif
+/* end INTEL_CUSTOMIZATION */
   } else {
     static_assert(sizeof(HintT) == sizeof(DataT),
                   "When trying to read a user-defined type, HintT must be of "
                   "the same size as the user-defined DataT.");
     static_assert(detail::is_recognized_standard_type<HintT>(),
                   "HintT must always be a recognized standard type");
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
     return sycl::bit_cast<DataT>(
         __invoke__ImageReadGrad<HintT>(imageHandle.raw_handle, coords, dX, dY));
+/* INTEL_CUSTOMIZATION */
+#else
+    return sycl::bit_cast<DataT>(__invoke__ImageReadGrad<DataT>(
+        detail::convert_handle_to_sampled_image<OCLImageTyRead<NDims>>(
+            imageHandle),
+        coords, dX, dY));
+#endif
+/* end INTEL_CUSTOMIZATION */
   }
 #else
   assert(false); // Bindless images not yet implemented on host
@@ -1155,7 +1308,7 @@ DataT fetch_image_array(const unsampled_image_handle &imageHandle
  *  @param   coords The coordinates at which to write image data
  *  @param   color The data to write
  */
-template <typename DataT, typename CoordT>
+template <typename DataT, typename HintT = DataT, typename CoordT>
 void write_image(const unsampled_image_handle &imageHandle [[maybe_unused]],
                  const CoordT &coords [[maybe_unused]],
                  const DataT &color [[maybe_unused]]) {
@@ -1166,6 +1319,7 @@ void write_image(const unsampled_image_handle &imageHandle [[maybe_unused]],
                 "for 1D, 2D and 3D images, respectively.");
 
 #ifdef __SYCL_DEVICE_ONLY__
+#if defined(__NVPTX__) // INTEL_CUSTOMIZATION
   if constexpr (detail::is_recognized_standard_type<DataT>()) {
     __invoke__ImageWrite((uint64_t)imageHandle.raw_handle, coords, color);
   } else {
@@ -1174,6 +1328,25 @@ void write_image(const unsampled_image_handle &imageHandle [[maybe_unused]],
     __invoke__ImageWrite((uint64_t)imageHandle.raw_handle, coords,
                          detail::convert_color(color));
   }
+/* INTEL_CUSTOMIZATION */
+#else
+  constexpr size_t NDims = (coordSize == 4) ? 3 : coordSize;
+  if constexpr (detail::is_recognized_standard_type<DataT>()) {
+    __invoke__ImageWrite(
+        detail::convert_handle_to_image<OCLImageTyWrite<NDims>>(
+            imageHandle.raw_handle),
+        coords, color);
+  } else {
+    // Convert DataT to a supported backend write type when user-defined type is
+    // passed
+    __invoke__ImageWrite(
+        detail::convert_handle_to_image<OCLImageTyWrite<NDims>>(
+            imageHandle.raw_handle),
+        //coords, sycl::bit_cast<HintT>(color));
+        coords, detail::convert_color(color));
+  }
+#endif
+/* end INTEL_CUSTOMIZATION */
 #else
   assert(false); // Bindless images not yet implemented on host
 #endif

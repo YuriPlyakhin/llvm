@@ -158,6 +158,7 @@ using PiExtCommandBuffer = ::pi_ext_command_buffer;
 using PiExtCommandBufferDesc = ::pi_ext_command_buffer_desc;
 using PiPeerAttr = ::pi_peer_attr;
 using PiImageHandle = ::pi_image_handle;
+using PiSamplerHandle = ::pi_sampler_handle;
 using PiImageMemHandle = ::pi_image_mem_handle;
 using PiImageCopyFlags = ::pi_image_copy_flags;
 using PiInteropMemHandle = ::pi_interop_mem_handle;

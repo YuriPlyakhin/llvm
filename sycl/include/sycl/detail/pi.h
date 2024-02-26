@@ -1128,6 +1128,7 @@ using pi_kernel = _pi_kernel *;
 using pi_event = _pi_event *;
 using pi_sampler = _pi_sampler *;
 using pi_image_handle = pi_uint64;
+using pi_sampler_handle = pi_uint64;
 using pi_image_mem_handle = void *;
 using pi_interop_mem_handle = pi_uint64;
 using pi_interop_semaphore_handle = pi_uint64;

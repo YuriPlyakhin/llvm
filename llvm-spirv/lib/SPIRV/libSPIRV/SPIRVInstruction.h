@@ -3931,6 +3931,53 @@ _SPIRV_OP(TaskSequenceRelease, false, 2, false)
                             internal::Op##x##INTEL, __VA_ARGS__>               \
       SPIRV##x##INTEL;
 _SPIRV_OP(TaskSequenceCreate, true, 8, false, 1, 2, 3, 4)
+
+template <Op OC> class SPIRVBindlessImagesInstBase : public SPIRVUnaryInst<OC> {
+protected:
+  SPIRVCapVec getRequiredCapability() const override {
+    return getVec(internal::CapabilityBindlessImagesINTEL);
+  }
+
+  std::optional<ExtensionID> getRequiredExtension() const override {
+    return ExtensionID::SPV_INTEL_bindless_images;
+  }
+
+  void validate() const override {
+    SPIRVUnary::validate();
+
+    // validate is a const method, whilst getOperand is non-const method
+    // because it may call a method of class Module that may modify LiteralMap
+    // of Module field. That modification is not impacting validate method for
+    // these instructions, so const_cast is safe here.
+    using SPVBindlessImagesInst = SPIRVBindlessImagesInstBase<OC>;
+    SPIRVValue *Input =
+        const_cast<SPVBindlessImagesInst *>(this)->getOperand(0);
+    SPIRVType *InCompTy = Input->getType();
+    auto InstName = OpCodeNameMap::map(OC);
+    SPIRVErrorLog &SPVErrLog = this->getModule()->getErrorLog();
+    SPVErrLog.checkError(
+        InCompTy->isTypeInt(32) || InCompTy->isTypeInt(64),
+        SPIRVEC_InvalidInstruction,
+        InstName + "\nParameter value must be a scalar of 32-bit or 64-bit "
+                   "type\n");
+
+    SPIRVType *ResTy = this->getType();
+    SPVErrLog.checkError(
+        (ResTy->isTypeImage() && OC == internal::OpConvertHandleToImageINTEL) ||
+            (ResTy->isTypeSampler() &&
+             OC == internal::OpConvertHandleToSamplerINTEL) ||
+            (ResTy->isTypeSampledImage() &&
+             OC == internal::OpConvertHandleToSampledImageINTEL),
+        SPIRVEC_InvalidInstruction,
+        InstName + "\nIncorrect return type of the instruction must be "
+                   "image/sampler/sampled image\n");
+  }
+};
+#define _SPIRV_OP(x)                                                           \
+  typedef SPIRVBindlessImagesInstBase<internal::Op##x> SPIRV##x;
+_SPIRV_OP(ConvertHandleToImageINTEL)
+_SPIRV_OP(ConvertHandleToSamplerINTEL)
+_SPIRV_OP(ConvertHandleToSampledImageINTEL)
 #undef _SPIRV_OP
 
 } // namespace SPIRV

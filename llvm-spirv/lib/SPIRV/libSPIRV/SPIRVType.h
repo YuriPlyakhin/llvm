@@ -107,6 +107,7 @@ public:
   bool isTypeSubgroupAvcINTEL() const;
   bool isTypeSubgroupAvcMceINTEL() const;
   bool isTypeTaskSequenceINTEL() const;
+  bool isTypeSampledImage() const;
 };
 
 class SPIRVTypeVoid : public SPIRVType {

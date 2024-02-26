@@ -1,3 +1,18 @@
+// INTEL_CUSTOMIZATION
+//
+// Modifications, Copyright (C) 2021 Intel Corporation
+//
+// This software and the related documents are Intel copyrighted materials, and
+// your use of them is governed by the express license under which they were
+// provided to you ("License"). Unless the License provides otherwise, you may not
+// use, modify, copy, publish, distribute, disclose or transmit this software or
+// the related documents without Intel's prior written permission.
+//
+// This software and the related documents are provided as is, with no express
+// or implied warranties, other than those that are expressly stated in the
+// License.
+//
+// end INTEL_CUSTOMIZATION
 //==----------- spirv_ops.hpp --- SPIRV operations -------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -220,6 +235,16 @@ __spirv_ImageSampleExplicitLod(SampledType, TempArgT, int, float);
 template <typename SampledType, typename TempRetT, typename TempArgT>
 extern __DPCPP_SYCL_EXTERNAL TempRetT
 __spirv_ImageSampleExplicitLod(SampledType, TempArgT, int, TempArgT, TempArgT);
+
+template <class RetT, class HandleT>
+extern __DPCPP_SYCL_EXTERNAL RetT __spirv_ConvertHandleToImageINTEL(HandleT);
+
+template <class RetT, class HandleT>
+extern __DPCPP_SYCL_EXTERNAL RetT __spirv_ConvertHandleToSamplerINTEL(HandleT);
+
+template <class RetT, class HandleT>
+extern __DPCPP_SYCL_EXTERNAL RetT
+    __spirv_ConvertHandleToSampledImageINTEL(HandleT);
 
 #define __SYCL_OpGroupAsyncCopyGlobalToLocal __spirv_GroupAsyncCopy
 #define __SYCL_OpGroupAsyncCopyLocalToGlobal __spirv_GroupAsyncCopy
@@ -1196,6 +1221,22 @@ extern __DPCPP_SYCL_EXTERNAL int
 __spirv_ocl_printf(const __attribute__((opencl_constant)) char *Format, ...);
 extern __DPCPP_SYCL_EXTERNAL int __spirv_ocl_printf(const char *Format, ...);
 #endif
+
+/* INTEL_CUSTOMIZATION */
+template <typename dataT, typename ReturnT, typename... ArgsT>
+extern __DPCPP_SYCL_EXTERNAL size_t __spirv_TaskSequenceCreateINTEL(
+    dataT *Data, ReturnT (*f)(ArgsT...), uint32_t MaxOut) noexcept;
+template <typename dataT, typename ReturnT, typename... ArgsT>
+extern __DPCPP_SYCL_EXTERNAL void
+__spirv_TaskSequenceAsyncINTEL(dataT *Data, ReturnT (*f)(ArgsT...), size_t Id,
+                               uint32_t Capacity, ArgsT... Args) noexcept;
+template <typename dataT, typename ReturnT, typename... ArgsT>
+extern __DPCPP_SYCL_EXTERNAL ReturnT __spirv_TaskSequenceGetINTEL(
+    dataT *Data, ReturnT (*f)(ArgsT...), size_t Id, uint32_t Capacity) noexcept;
+template <typename dataT>
+extern __DPCPP_SYCL_EXTERNAL void
+__spirv_TaskSequenceReleaseINTEL(dataT *Data) noexcept;
+/* end INTEL_CUSTOMIZATION */
 
 // Native builtin extension
 

@@ -139,7 +139,8 @@ __SYCL_EXPORT void destroy_image_handle(sampled_image_handle &imageHandle,
       sycl::detail::getSyclObjImpl(syclDevice);
   pi_device Device = DevImpl->getHandleRef();
   const sycl::detail::PluginPtr &Plugin = CtxImpl->getPlugin();
-  pi_image_handle piImageHandle = imageHandle.raw_handle;
+  pi_image_handle piImageHandle =
+      imageHandle.raw_sampled_image_handle.raw_image_handle;
 
   Plugin->call<sycl::errc::runtime,
                sycl::detail::PiApiKind::piextMemSampledImageHandleDestroy>(
@@ -378,8 +379,52 @@ __SYCL_EXPORT sampled_image_handle
 create_image(image_mem_handle memHandle, const bindless_image_sampler &sampler,
              const image_descriptor &desc, const sycl::device &syclDevice,
              const sycl::context &syclContext) {
-  return create_image(memHandle.raw_handle, 0 /*pitch*/, sampler, desc,
-                      syclDevice, syclContext);
+
+  std::shared_ptr<sycl::detail::context_impl> CtxImpl =
+      sycl::detail::getSyclObjImpl(syclContext);
+  pi_context C = CtxImpl->getHandleRef();
+  std::shared_ptr<sycl::detail::device_impl> DevImpl =
+      sycl::detail::getSyclObjImpl(syclDevice);
+  pi_device Device = DevImpl->getHandleRef();
+  const sycl::detail::PluginPtr &Plugin = CtxImpl->getPlugin();
+
+  const pi_sampler_properties sProps[] = {
+      PI_SAMPLER_PROPERTIES_NORMALIZED_COORDS,
+      static_cast<pi_sampler_properties>(sampler.coordinate),
+      PI_SAMPLER_PROPERTIES_ADDRESSING_MODE,
+      static_cast<pi_sampler_properties>(sampler.addressing[0]),
+      PI_SAMPLER_PROPERTIES_ADDRESSING_MODE,
+      static_cast<pi_sampler_properties>(sampler.addressing[1]),
+      PI_SAMPLER_PROPERTIES_ADDRESSING_MODE,
+      static_cast<pi_sampler_properties>(sampler.addressing[2]),
+      PI_SAMPLER_PROPERTIES_FILTER_MODE,
+      static_cast<pi_sampler_properties>(sampler.filtering),
+      PI_SAMPLER_PROPERTIES_MIP_FILTER_MODE,
+      static_cast<pi_sampler_properties>(sampler.mipmap_filtering),
+      0};
+
+  pi_sampler piSampler = {};
+  Plugin->call<sycl::errc::runtime,
+               sycl::detail::PiApiKind::piextBindlessImageSamplerCreate>(
+      C, sProps, sampler.min_mipmap_level_clamp, sampler.max_mipmap_level_clamp,
+      sampler.max_anisotropy, &piSampler);
+
+  pi_image_desc piDesc;
+  pi_image_format piFormat;
+  populate_pi_structs(desc, piDesc, piFormat);
+
+  combined_sampled_image_handle sampledImageHandle;
+
+  // Call impl.
+  pi_image_handle piImageHandle;
+  pi_mem piImage;
+  Plugin->call<sycl::errc::runtime,
+               sycl::detail::PiApiKind::piextMemSampledImageCreate>(
+      C, Device, memHandle.raw_handle, &piFormat, &piDesc, piSampler, &piImage,
+      //&piImageHandle);
+      reinterpret_cast<pi_image_handle *>(&sampledImageHandle));
+
+  return sampled_image_handle{sampledImageHandle};
 }
 
 __SYCL_EXPORT sampled_image_handle
@@ -393,15 +438,15 @@ __SYCL_EXPORT sampled_image_handle
 create_image(image_mem &imgMem, const bindless_image_sampler &sampler,
              const image_descriptor &desc, const sycl::device &syclDevice,
              const sycl::context &syclContext) {
-  return create_image(imgMem.get_handle().raw_handle, 0 /*pitch*/, sampler,
-                      desc, syclDevice, syclContext);
+  return create_image(imgMem.get_handle(), sampler, desc, syclDevice,
+                      syclContext);
 }
 
 __SYCL_EXPORT sampled_image_handle
 create_image(image_mem &imgMem, const bindless_image_sampler &sampler,
              const image_descriptor &desc, const sycl::queue &syclQueue) {
-  return create_image(imgMem.get_handle().raw_handle, 0 /*pitch*/, sampler,
-                      desc, syclQueue.get_device(), syclQueue.get_context());
+  return create_image(imgMem.get_handle(), sampler, desc,
+                      syclQueue.get_device(), syclQueue.get_context());
 }
 
 __SYCL_EXPORT sampled_image_handle
@@ -443,15 +488,18 @@ create_image(void *devPtr, size_t pitch, const bindless_image_sampler &sampler,
   pi_image_format piFormat;
   populate_pi_structs(desc, piDesc, piFormat, pitch);
 
+  combined_sampled_image_handle sampledImageHandle;
+
   // Call impl.
   pi_mem piImage;
   pi_image_handle piImageHandle;
   Plugin->call<sycl::errc::runtime,
                sycl::detail::PiApiKind::piextMemSampledImageCreate>(
       C, Device, devPtr, &piFormat, &piDesc, piSampler, &piImage,
-      &piImageHandle);
+      //&piImageHandle);
+      reinterpret_cast<pi_image_handle *>(&sampledImageHandle));
 
-  return sampled_image_handle{piImageHandle};
+  return sampled_image_handle{sampledImageHandle};
 }
 
 __SYCL_EXPORT sampled_image_handle

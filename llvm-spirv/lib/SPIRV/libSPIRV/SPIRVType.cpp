@@ -251,6 +251,10 @@ bool SPIRVType::isTypeVectorOrScalarFloat() const {
   return isTypeFloat() || isTypeVectorFloat();
 }
 
+bool SPIRVType::isTypeSampledImage() const {
+  return OpCode == OpTypeSampledImage;
+}
+
 bool SPIRVTypeStruct::isPacked() const {
   return hasDecorate(DecorationCPacked);
 }
