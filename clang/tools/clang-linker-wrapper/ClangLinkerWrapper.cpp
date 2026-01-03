@@ -1227,8 +1227,6 @@ static Expected<StringRef> runCompile(StringRef &InputFile,
 
 /// Write an OffloadBinary containing the serialized SYCLBIN resulting from
 /// \p ModuleDescs to the ExecutableName file with the .syclbin extension.
-// Rewrite this function. SYCLBIN serialization would return OffloadBinary,
-// no need to serialize SYCLBIN and then wrap into OffloadBinary as an entry.
 static Expected<StringRef>
 packageSYCLBIN(SYCLBIN::BundleState State,
                const ArrayRef<SYCLBIN::SYCLBINModuleDesc> Modules) {
