@@ -134,6 +134,20 @@ void PropertySetRegistry::write(raw_ostream &Out) const {
   }
 }
 
+void PropertySetRegistry::write(
+    MapVector<StringRef, StringRef> &StringData,
+    SmallVectorImpl<SmallString<128>> &BufferStorage) const {
+  for (const auto &PropSet : PropSetMap) {
+    SmallString<128> &ValueBuffer = BufferStorage.emplace_back();
+    raw_svector_ostream OS(ValueBuffer);
+
+    for (const auto &Prop : PropSet.second)
+      OS << Prop.first << "=" << Prop.second << "\n";
+
+    StringData[PropSet.first] = StringRef(ValueBuffer);
+  }
+}
+
 namespace llvm {
 namespace util {
 

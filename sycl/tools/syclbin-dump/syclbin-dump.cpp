@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     std::abort();
   }
 
-  OS << "Version: " << ParsedSYCLBIN->Version << "\n";
+  OS << "Version: " << ParsedSYCLBIN->getVersion() << "\n";
   OS << "Global metadata:\n";
   PrintProperties(OS, *(ParsedSYCLBIN->GlobalMetadata));
   OS << "Number of Abstract Modules: " << ParsedSYCLBIN->AbstractModules.size()
