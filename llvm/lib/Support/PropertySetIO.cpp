@@ -143,8 +143,7 @@ void PropertySetRegistry::write(
 
     for (const auto &Prop : PropSet.second)
       OS << Prop.first << "=" << Prop.second << "\n";
-
-    StringData[PropSet.first] = StringRef(ValueBuffer);
+    StringData[PropSet.first] = ValueBuffer;
   }
 }
 

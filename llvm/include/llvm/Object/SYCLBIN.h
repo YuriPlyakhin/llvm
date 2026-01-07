@@ -51,12 +51,14 @@ public:
 
   private:
     struct ImageDesc {
-      SmallString<0> Metadata;
+      ImageKind TheImageKind = ImageKind::IMG_None;
+      llvm::Triple TargetTriple;
+      std::string ArchString;
       SmallString<0> FilePath;
     };
 
     struct AbstractModuleDesc {
-      SmallString<0> Metadata;
+      std::unique_ptr<llvm::util::PropertySetRegistry> Metadata;
       SmallVector<ImageDesc, 4> IRModuleDescs;
       SmallVector<ImageDesc, 4> NativeDeviceCodeImageDescs;
     };
@@ -68,31 +70,64 @@ public:
   };
 
   /// Serialize \p Desc.
-  static SmallString<0> write(const SYCLBIN::SYCLBINDesc &Desc);
+  static Error write(const SYCLBIN::SYCLBINDesc &Desc, raw_ostream &OS);
 
   /// Deserialize the contents of \p Source to produce a SYCLBIN object.
   static Expected<std::unique_ptr<SYCLBIN>> read(MemoryBufferRef Source);
 
-  struct IRModule {
-    std::unique_ptr<llvm::util::PropertySetRegistry> Metadata;
-    StringRef RawIRBytes;
-  };
-  struct NativeDeviceCodeImage {
-    std::unique_ptr<llvm::util::PropertySetRegistry> Metadata;
-    StringRef RawDeviceCodeImageBytes;
-  };
-
-  struct AbstractModule {
-    std::unique_ptr<llvm::util::PropertySetRegistry> Metadata;
-    SmallVector<IRModule> IRModules;
-    SmallVector<NativeDeviceCodeImage> NativeDeviceCodeImages;
-  };
-
-  std::unique_ptr<llvm::util::PropertySetRegistry> GlobalMetadata;
-  SmallVector<AbstractModule, 4> AbstractModules;
-
-  private:
+private:
+  SYCLBIN() {}
+  SYCLBIN(SmallVector<std::unique_ptr<OffloadBinary>> OB)
+      : OffloadBinaries(std::move(OB)) {}
   SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries;
+
+  /// The current version of the binary used for backwards compatibility.
+  static constexpr uint32_t
+      [[deprecated("Use OffloadBinary format instead.")]] CurrentVersion = 1;
+
+  /// Magic number used to identify SYCLBIN files.
+  static constexpr uint32_t
+      [[deprecated("Use OffloadBinary format instead.")]] MagicNumber =
+          0x53594249;
+
+  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
+      FileHeaderType {
+    uint32_t Magic;
+    uint32_t Version;
+    uint32_t AbstractModuleCount;
+    uint32_t IRModuleCount;
+    uint32_t NativeDeviceCodeImageCount;
+    uint64_t MetadataByteTableSize;
+    uint64_t BinaryByteTableSize;
+    uint64_t GlobalMetadataOffset;
+    uint64_t GlobalMetadataSize;
+  };
+
+  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
+      AbstractModuleHeaderType {
+    uint64_t MetadataOffset;
+    uint64_t MetadataSize;
+    uint32_t IRModuleCount;
+    uint32_t IRModuleOffset;
+    uint32_t NativeDeviceCodeImageCount;
+    uint32_t NativeDeviceCodeImageOffset;
+  };
+
+  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
+      IRModuleHeaderType {
+    uint64_t MetadataOffset;
+    uint64_t MetadataSize;
+    uint64_t RawIRBytesOffset;
+    uint64_t RawIRBytesSize;
+  };
+
+  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
+      NativeDeviceCodeImageHeaderType {
+    uint64_t MetadataOffset;
+    uint64_t MetadataSize;
+    uint64_t BinaryBytesOffset;
+    uint64_t BinaryBytesSize;
+  };
 };
 
 } // namespace object
