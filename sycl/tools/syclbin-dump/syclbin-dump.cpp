@@ -71,7 +71,7 @@ void PrintProperties(raw_ostream &OS,
       ScopedIndent Ind;
       std::string PropValStr = PropertyValueToString(PropertyValue.second);
       // If there is a newline in the value, start at next line and do
-      // proper indentantion.
+      // proper indentation.
       std::regex NewlineRegex{"\r\n|\r|\n"};
       if (std::smatch Match;
           std::regex_search(PropValStr, Match, NewlineRegex)) {
@@ -115,27 +115,32 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  MemoryBufferRef SYCLBINImageBuffer = [&]() {
+  Expected<std::unique_ptr<llvm::object::SYCLBIN>> SYCLBINPtrOrErr =
+      llvm::object::SYCLBIN::read(**FileMemBufferOrError);
+
+  // If direct SYCLBIN parsing failed, try parsing as OffloadBinary wrapper.
+  if (!SYCLBINPtrOrErr) {
+    consumeError(SYCLBINPtrOrErr.takeError());
     auto OffloadBinaryVecOrError =
         llvm::object::OffloadBinary::create(**FileMemBufferOrError);
     if (!OffloadBinaryVecOrError) {
-      // If we failed to load as an offload binary, it may still be a SYCLBIN at
-      // an outer level.
-      consumeError(OffloadBinaryVecOrError.takeError());
-      return MemoryBufferRef(**FileMemBufferOrError);
-    } else {
-      return MemoryBufferRef(OffloadBinaryVecOrError.get()[0]->getImage(), "");
+      errs() << "Failed to parse SYCLBIN file: "
+             << OffloadBinaryVecOrError.takeError() << "\n";
+      std::abort();
     }
-  }();
 
-  std::unique_ptr<llvm::object::SYCLBIN> ParsedSYCLBIN;
-  if (llvm::Error E = llvm::object::SYCLBIN::read(SYCLBINImageBuffer)
-                          .moveInto(ParsedSYCLBIN)) {
-    errs() << "Failed to parse SYCLBIN file: " << E << "\n";
-    std::abort();
+    SYCLBINPtrOrErr = llvm::object::SYCLBIN::read(
+        MemoryBufferRef(OffloadBinaryVecOrError->front()->getImage(), ""));
+    if (!SYCLBINPtrOrErr) {
+      errs() << "Failed to parse SYCLBIN file: " << SYCLBINPtrOrErr.takeError()
+             << "\n";
+      std::abort();
+    }
   }
 
-  OS << "Version: " << ParsedSYCLBIN->getVersion() << "\n";
+  std::unique_ptr<llvm::object::SYCLBIN> ParsedSYCLBIN =
+      std::move(*SYCLBINPtrOrErr);
+
   OS << "Global metadata:\n";
   PrintProperties(OS, *(ParsedSYCLBIN->GlobalMetadata));
   OS << "Number of Abstract Modules: " << ParsedSYCLBIN->AbstractModules.size()

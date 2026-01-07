@@ -14,9 +14,11 @@ using namespace llvm;
 using namespace llvm::object;
 using OffloadingImage = OffloadBinary::OffloadingImage;
 
+// Classes in this namespace scope are deprecated and are kept only for backward
+// compatibility. They should be removed in the future release.
 namespace {
 
-class [[deprecated("Use OffloadBinary format instead.")]] SYCLBINBlockReader {
+class SYCLBINBlockReader {
 protected:
   SYCLBINBlockReader(const char *Data, size_t Size) : Data{Data}, Size{Size} {}
 
@@ -31,8 +33,7 @@ protected:
   size_t Size = 0;
 };
 
-class [[deprecated("Use OffloadBinary format instead.")]]
-SYCLBINHeaderBlockReader : public SYCLBINBlockReader {
+class SYCLBINHeaderBlockReader : public SYCLBINBlockReader {
 public:
   SYCLBINHeaderBlockReader(const char *Data, size_t Size)
       : SYCLBINBlockReader(Data, Size) {}
@@ -45,8 +46,7 @@ public:
   }
 };
 
-class [[deprecated("Use OffloadBinary format instead.")]]
-SYCLBINByteTableBlockReader : public SYCLBINBlockReader {
+class SYCLBINByteTableBlockReader : public SYCLBINBlockReader {
 public:
   SYCLBINByteTableBlockReader(const char *Data, size_t Size)
       : SYCLBINBlockReader(Data, Size) {}
@@ -186,11 +186,16 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
   // Try to read SYCLBIN in new format (aka augmented OffloadBinary).
   Expected<SmallVector<std::unique_ptr<OffloadBinary>>> OffloadBinariesOrErr =
       OffloadBinary::create(Source);
-  if (OffloadBinariesOrErr)
-    return std::make_unique<SYCLBIN>(std::move(*OffloadBinariesOrErr));
+  if (OffloadBinariesOrErr) {
+    if (isSYCLBIN(*OffloadBinariesOrErr))
+      return std::make_unique<SYCLBIN>(std::move(*OffloadBinariesOrErr));
 
-  auto Result = std::make_unique<SYCLBIN>();
+    return createStringError(inconvertibleErrorCode(),
+                             "Valid Offload Binary, but not SYCLBIN.");
+  }
+
   // Try to read SYCLBIN in legacy format for backward compatibility
+  // After reading, it will be written in OffloadBinary format and read again.
   if (Source.getBufferSize() < sizeof(FileHeaderType))
     return createStringError(inconvertibleErrorCode(),
                              "Unexpected file contents size.");
@@ -202,7 +207,7 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
     return createStringError(inconvertibleErrorCode(),
                              "Incorrect SYCLBIN magic number.");
 
-  if (FileHeader->Version > CurrentVersion)
+  if (FileHeader->Version != 1)
     return createStringError(inconvertibleErrorCode(),
                              "Unsupported SYCLBIN version " +
                                  std::to_string(FileHeader->Version) + ".");
@@ -325,6 +330,12 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
 
     // Read the native device code images of the current abstract module.
     for (uint32_t J = 0; J < AMHeader->NativeDeviceCodeImageCount; ++J) {
+      OffloadingImage OI{};
+
+      OI.TheImageKind = ImageKind::IMG_Object;
+      OI.TheOffloadKind = OffloadKind::OFK_SYCL;
+      OI.StringData["syclbin_abstract_module_id"] = AbstractModuleID;
+      AMMetadata->write(OI.StringData, Buffers);
 
       // Read the header for the current native device code image.
       const NativeDeviceCodeImageHeaderType *NDCIHeader = nullptr;
@@ -339,20 +350,55 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
         return std::move(E);
 
       // Read the metadata for the current native device code image.
+      std::unique_ptr<llvm::util::PropertySetRegistry> NDCIMetadata =
+          std::make_unique<llvm::util::PropertySetRegistry>();
       if (Error E = MetadataByteTableBlockReader
                         .GetMetadata(NDCIHeader->MetadataOffset,
                                      NDCIHeader->MetadataSize)
-                        .moveInto(NDCI.Metadata))
+                        .moveInto(NDCIMetadata))
         return std::move(E);
 
+      llvm::util::PropertySet PS =
+          (*NDCIMetadata)[llvm::util::PropertySetRegistry::
+                              SYCLBIN_NATIVE_DEVICE_CODE_IMAGE_METADATA];
+      OI.StringData["triple"] = reinterpret_cast<const char *>(
+          PS[llvm::util::PropertySet::key_type("target")].asByteArray());
+      OI.StringData["arch"] = reinterpret_cast<const char *>(
+          PS[llvm::util::PropertySet::key_type("arch")].asByteArray());
+
       // Read the binary blob for the current native device code image.
+      StringRef NDCIRawDeviceCodeImageBytes;
       if (Error E = BinaryByteTableBlockReader
                         .GetBinaryBlob(NDCIHeader->BinaryBytesOffset,
                                        NDCIHeader->BinaryBytesSize)
-                        .moveInto(NDCI.RawDeviceCodeImageBytes))
+                        .moveInto(NDCIRawDeviceCodeImageBytes))
         return std::move(E);
+      OI.Image = MemoryBuffer::getMemBuffer(NDCIRawDeviceCodeImageBytes, "",
+                                            /*RequiresNullTerminator=*/false);
+      Images.emplace_back(std::move(OI));
     }
+    ++AbstractModuleIndex;
   }
 
-  return std::move(Result);
+  SmallString<0> NewSYCLBIN = OffloadBinary::write(Images);
+  OffloadBinariesOrErr = OffloadBinary::create(
+      MemoryBufferRef(NewSYCLBIN, Source.getBufferIdentifier()));
+  if (!OffloadBinariesOrErr)
+    return std::move(OffloadBinariesOrErr.takeError());
+
+  return std::make_unique<SYCLBIN>(std::move(*OffloadBinariesOrErr));
+}
+
+bool SYCLBIN::isSYCLBIN(
+    SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries) {
+  for (const std::unique_ptr<OffloadBinary> &OBPtr : OffloadBinaries) {
+    if ((OBPtr->getFlags() & OIF_NoImage) == 0)
+      continue;
+
+    StringRef MD = OBPtr->getString(
+        llvm::util::PropertySetRegistry::SYCLBIN_GLOBAL_METADATA);
+    return !MD.empty();
+  }
+
+  return false;
 }

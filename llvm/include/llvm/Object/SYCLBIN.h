@@ -20,16 +20,14 @@ namespace llvm {
 namespace object {
 
 // Representation of a SYCLBIN binary object.
+// Currently SYCLBIN doesn't own memory, so user must ensure memory used to
+// initialize SYCLBIN remains valid for the lifetime of the SYCLBIN object. So
+// far I did not find use case, where we want to move memory ownership to
+// SYCLBIN or do a memory copy. This can be changed if we find this use case.
 class SYCLBIN {
 public:
   SYCLBIN(const SYCLBIN &Other) = delete;
   SYCLBIN &operator=(const SYCLBIN &Other) = delete;
-
-  uint32_t getVersion() const {
-    assert(OffloadBinaries.size() > 0 &&
-           "SYCLBIN should contain at least 1 offload binary.");
-    return OffloadBinaries[0]->getVersion();
-  }
 
   enum class BundleState : uint8_t { Input = 0, Object = 1, Executable = 2 };
 
@@ -69,29 +67,43 @@ public:
     friend class SYCLBIN;
   };
 
+  /// Create a SYCLBIN object from a vector of OffloadBinary objects.
+  static Expected<std::unique_ptr<SYCLBIN>>
+  create(SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries);
+
   /// Serialize \p Desc.
   static Error write(const SYCLBIN::SYCLBINDesc &Desc, raw_ostream &OS);
 
   /// Deserialize the contents of \p Source to produce a SYCLBIN object.
   static Expected<std::unique_ptr<SYCLBIN>> read(MemoryBufferRef Source);
 
+  /// Check if OffloadBinary is a SYCLBIN.
+  static bool
+  isSYCLBIN(SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries);
+
+  std::unique_ptr<llvm::util::PropertySetRegistry> GlobalMetadata;
+
 private:
-  SYCLBIN() {}
   SYCLBIN(SmallVector<std::unique_ptr<OffloadBinary>> OB)
       : OffloadBinaries(std::move(OB)) {}
+  
+  Error initGlobalMetadata();
+
+  static const OffloadBinary *getGlobalMetadataBinary(
+      const SmallVector<std::unique_ptr<OffloadBinary>> &OBs);
+
   SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries;
 
-  /// The current version of the binary used for backwards compatibility.
-  static constexpr uint32_t
-      [[deprecated("Use OffloadBinary format instead.")]] CurrentVersion = 1;
+  // Allow create() to use make_unique with private constructor.
+  friend Expected<std::
+
+  // The types and fields below are kept for backward compatibility and should
+  // be removed in the future:
 
   /// Magic number used to identify SYCLBIN files.
-  static constexpr uint32_t
-      [[deprecated("Use OffloadBinary format instead.")]] MagicNumber =
-          0x53594249;
+  static constexpr uint32_t MagicNumber = 0x53594249;
 
-  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
-      FileHeaderType {
+  struct alignas(8) FileHeaderType {
     uint32_t Magic;
     uint32_t Version;
     uint32_t AbstractModuleCount;
@@ -103,8 +115,7 @@ private:
     uint64_t GlobalMetadataSize;
   };
 
-  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
-      AbstractModuleHeaderType {
+  struct alignas(8) AbstractModuleHeaderType {
     uint64_t MetadataOffset;
     uint64_t MetadataSize;
     uint32_t IRModuleCount;
@@ -113,21 +124,21 @@ private:
     uint32_t NativeDeviceCodeImageOffset;
   };
 
-  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
-      IRModuleHeaderType {
+  struct alignas(8) IRModuleHeaderType {
     uint64_t MetadataOffset;
     uint64_t MetadataSize;
     uint64_t RawIRBytesOffset;
     uint64_t RawIRBytesSize;
   };
 
-  struct [[deprecated("Use OffloadBinary format instead.")]] alignas(8)
-      NativeDeviceCodeImageHeaderType {
+  struct alignas(8) NativeDeviceCodeImageHeaderType {
     uint64_t MetadataOffset;
     uint64_t MetadataSize;
     uint64_t BinaryBytesOffset;
     uint64_t BinaryBytesSize;
   };
+
+  // End of deprecated types and fields.
 };
 
 } // namespace object
