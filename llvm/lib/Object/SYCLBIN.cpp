@@ -188,7 +188,7 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
       OffloadBinary::create(Source);
   if (OffloadBinariesOrErr) {
     if (isSYCLBIN(*OffloadBinariesOrErr))
-      return std::make_unique<SYCLBIN>(std::move(*OffloadBinariesOrErr));
+      return create(std::move(*OffloadBinariesOrErr));
 
     return createStringError(inconvertibleErrorCode(),
                              "Valid Offload Binary, but not SYCLBIN.");
@@ -386,19 +386,51 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
   if (!OffloadBinariesOrErr)
     return std::move(OffloadBinariesOrErr.takeError());
 
-  return std::make_unique<SYCLBIN>(std::move(*OffloadBinariesOrErr));
+  return create(std::move(*OffloadBinariesOrErr));
 }
 
 bool SYCLBIN::isSYCLBIN(
-    SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries) {
-  for (const std::unique_ptr<OffloadBinary> &OBPtr : OffloadBinaries) {
+    const SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries) {
+  return getGlobalMetadataBinary(OffloadBinaries);
+}
+
+const OffloadBinary *SYCLBIN::getGlobalMetadataBinary(
+    const SmallVector<std::unique_ptr<OffloadBinary>> &OBs) {
+  for (const std::unique_ptr<OffloadBinary> &OBPtr : OBs) {
     if ((OBPtr->getFlags() & OIF_NoImage) == 0)
       continue;
 
     StringRef MD = OBPtr->getString(
         llvm::util::PropertySetRegistry::SYCLBIN_GLOBAL_METADATA);
-    return !MD.empty();
+    if (!MD.empty())
+      return OBPtr.get();
   }
+  return nullptr;
+}
 
-  return false;
+Error SYCLBIN::initGlobalMetadata() {
+  const OffloadBinary *GlobalMDBinary =
+      getGlobalMetadataBinary(OffloadBinaries);
+  if (!GlobalMDBinary)
+    return createStringError(inconvertibleErrorCode(),
+                             "No global metadata found in SYCLBIN.");
+
+  auto ErrorOrProperties =
+      llvm::util::PropertySetRegistry::read(GlobalMDBinary->strings());
+  if (!ErrorOrProperties)
+    return ErrorOrProperties.takeError();
+
+  GlobalMetadata = std::move(*ErrorOrProperties);
+  return Error::success();
+}
+
+Expected<std::unique_ptr<SYCLBIN>>
+SYCLBIN::create(SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries) {
+  std::unique_ptr<SYCLBIN> SYCLBINPtr =
+      std::unique_ptr<SYCLBIN>(new SYCLBIN(std::move(OffloadBinaries)));
+
+  if (Error E = SYCLBINPtr->initGlobalMetadata())
+    return std::move(E);
+
+  return SYCLBINPtr;
 }

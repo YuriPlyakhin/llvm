@@ -79,7 +79,11 @@ public:
 
   /// Check if OffloadBinary is a SYCLBIN.
   static bool
-  isSYCLBIN(SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries);
+  isSYCLBIN(const SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries);
+
+  ArrayRef<std::unique_ptr<OffloadBinary>> getOffloadBinaries() const {
+    return OffloadBinaries;
+  }
 
   std::unique_ptr<llvm::util::PropertySetRegistry> GlobalMetadata;
 
@@ -93,9 +97,6 @@ private:
       const SmallVector<std::unique_ptr<OffloadBinary>> &OBs);
 
   SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries;
-
-  // Allow create() to use make_unique with private constructor.
-  friend Expected<std::
 
   // The types and fields below are kept for backward compatibility and should
   // be removed in the future:

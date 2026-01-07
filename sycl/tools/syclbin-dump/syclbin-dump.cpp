@@ -143,14 +143,10 @@ int main(int argc, char **argv) {
 
   OS << "Global metadata:\n";
   PrintProperties(OS, *(ParsedSYCLBIN->GlobalMetadata));
-  OS << "Number of Abstract Modules: " << ParsedSYCLBIN->AbstractModules.size()
-     << "\n";
 
-  for (size_t I = 0; I < ParsedSYCLBIN->AbstractModules.size(); ++I) {
-    const llvm::object::SYCLBIN::AbstractModule &AM =
-        ParsedSYCLBIN->AbstractModules[I];
-
-    OS << "Abstract Module " << I << ":\n";
+  for (const auto &OBPtr : ParsedSYCLBIN->getOffloadBinaries()) {
+    OS << "Abstract Module " << OBPtr->getString("syclbin_abstract_module_id")
+       << ":\n";
 
     ScopedIndent Ind;
 
