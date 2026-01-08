@@ -145,44 +145,18 @@ int main(int argc, char **argv) {
   PrintProperties(OS, *(ParsedSYCLBIN->GlobalMetadata));
 
   for (const auto &OBPtr : ParsedSYCLBIN->getOffloadBinaries()) {
-    OS << "Abstract Module " << OBPtr->getString("syclbin_abstract_module_id")
-       << ":\n";
+    OS << "Abstract Module ID: "
+       << OBPtr->getString("syclbin_abstract_module_id") << "\n";
+    OS << "Image Kind: "
+       << llvm::object::getImageKindName(OBPtr->getImageKind()) << "\n";
+    OS << "Triple: " << OBPtr->getString("triple") << "\n";
+    OS << "Arch: " << OBPtr->getString("Arch") << "\n";
 
-    ScopedIndent Ind;
+    OS << "Metadata:\n";
+    PrintProperties(OS, *ParsedSYCLBIN->Metadata[OBPtr.get()]);
 
-    // Metadata.
-    OS << Ind << "Metadata:\n";
-    PrintProperties(OS, *AM.Metadata);
-
-    // IR Modules.
-    OS << Ind << "Number of IR Modules: " << AM.IRModules.size() << "\n";
-    for (size_t J = 0; J < AM.IRModules.size(); ++J) {
-      const llvm::object::SYCLBIN::IRModule &IRM = AM.IRModules[J];
-      OS << Ind << "IR module " << J << ":\n";
-      {
-        ScopedIndent Ind;
-        OS << Ind << "Metadata:\n";
-        PrintProperties(OS, *IRM.Metadata);
-        OS << Ind << "Raw IR bytes: <Binary blob of " << IRM.RawIRBytes.size()
-           << " bytes>\n";
-      }
-    }
-
-    // Native device code images.
-    OS << Ind << "Number of Native Device Code Images: "
-       << AM.NativeDeviceCodeImages.size() << "\n";
-    for (size_t J = 0; J < AM.NativeDeviceCodeImages.size(); ++J) {
-      const llvm::object::SYCLBIN::NativeDeviceCodeImage &NDCI =
-          AM.NativeDeviceCodeImages[J];
-      OS << Ind << "Native device code image " << J << ":\n";
-      {
-        ScopedIndent Ind;
-        OS << Ind << "Metadata:\n";
-        PrintProperties(OS, *NDCI.Metadata);
-        OS << Ind << "Raw native device code image bytes: <Binary blob of "
-           << NDCI.RawDeviceCodeImageBytes.size() << " bytes>\n";
-      }
-    }
+    OS << "Raw bytes: <Binary blob of " << OBPtr->getImage().size()
+       << " bytes>\n";
   }
 
   return 0;

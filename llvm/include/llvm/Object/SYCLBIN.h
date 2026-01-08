@@ -86,15 +86,15 @@ public:
   }
 
   std::unique_ptr<llvm::util::PropertySetRegistry> GlobalMetadata;
+  DenseMap<const OffloadBinary *,
+           std::unique_ptr<llvm::util::PropertySetRegistry>>
+      Metadata;
 
 private:
   SYCLBIN(SmallVector<std::unique_ptr<OffloadBinary>> OB)
       : OffloadBinaries(std::move(OB)) {}
   
-  Error initGlobalMetadata();
-
-  static const OffloadBinary *getGlobalMetadataBinary(
-      const SmallVector<std::unique_ptr<OffloadBinary>> &OBs);
+  Error initMetadata();
 
   SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries;
 

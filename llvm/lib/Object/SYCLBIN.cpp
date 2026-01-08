@@ -391,36 +391,36 @@ Expected<std::unique_ptr<SYCLBIN>> SYCLBIN::read(MemoryBufferRef Source) {
 
 bool SYCLBIN::isSYCLBIN(
     const SmallVector<std::unique_ptr<OffloadBinary>> &OffloadBinaries) {
-  return getGlobalMetadataBinary(OffloadBinaries);
-}
-
-const OffloadBinary *SYCLBIN::getGlobalMetadataBinary(
-    const SmallVector<std::unique_ptr<OffloadBinary>> &OBs) {
-  for (const std::unique_ptr<OffloadBinary> &OBPtr : OBs) {
+  for (const std::unique_ptr<OffloadBinary> &OBPtr : OffloadBinaries) {
     if ((OBPtr->getFlags() & OIF_NoImage) == 0)
       continue;
 
     StringRef MD = OBPtr->getString(
         llvm::util::PropertySetRegistry::SYCLBIN_GLOBAL_METADATA);
-    if (!MD.empty())
-      return OBPtr.get();
+    return !MD.empty();
   }
-  return nullptr;
+  return false;
 }
 
-Error SYCLBIN::initGlobalMetadata() {
-  const OffloadBinary *GlobalMDBinary =
-      getGlobalMetadataBinary(OffloadBinaries);
-  if (!GlobalMDBinary)
-    return createStringError(inconvertibleErrorCode(),
-                             "No global metadata found in SYCLBIN.");
+Error SYCLBIN::initMetadata() {
+  for (const std::unique_ptr<OffloadBinary> &OBPtr : OffloadBinaries){
+    if ((OBPtr->getFlags() & OIF_NoImage) == 0) {
+      auto ErrorOrProperties =
+          llvm::util::PropertySetRegistry::read(OBPtr->strings());
+      if (!ErrorOrProperties)
+        return ErrorOrProperties.takeError();
 
-  auto ErrorOrProperties =
-      llvm::util::PropertySetRegistry::read(GlobalMDBinary->strings());
-  if (!ErrorOrProperties)
-    return ErrorOrProperties.takeError();
+      GlobalMetadata = std::move(*ErrorOrProperties);
+      continue;
+    }
 
-  GlobalMetadata = std::move(*ErrorOrProperties);
+    auto ErrorOrProperties =
+        llvm::util::PropertySetRegistry::read(OBPtr->strings());
+    if (!ErrorOrProperties)
+      return ErrorOrProperties.takeError();
+
+    Metadata[OBPtr.get()] = std::move(*ErrorOrProperties);
+  }
   return Error::success();
 }
 
@@ -429,7 +429,7 @@ SYCLBIN::create(SmallVector<std::unique_ptr<OffloadBinary>> OffloadBinaries) {
   std::unique_ptr<SYCLBIN> SYCLBINPtr =
       std::unique_ptr<SYCLBIN>(new SYCLBIN(std::move(OffloadBinaries)));
 
-  if (Error E = SYCLBINPtr->initGlobalMetadata())
+  if (Error E = SYCLBINPtr->initMetadata())
     return std::move(E);
 
   return SYCLBINPtr;

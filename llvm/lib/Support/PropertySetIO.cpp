@@ -122,8 +122,9 @@ Expected<std::unique_ptr<PropertySetRegistry>> PropertySetRegistry::read(
   // Iterate over each category in the string data.
   for (const auto &Entry : StringData) {
     StringRef PropertiesStr = Entry.second;
-    // Skip empty categories.
-    if (PropertiesStr.empty())
+    // Skip empty categories or non-property values.
+    if (PropertiesStr.empty() || !PropertiesStr.starts_with("SYCL/") ||
+        !PropertiesStr.starts_with("SYCLBIN/"))
       continue;
 
     PropertySet &CurPropSet = (*Res)[Entry.first];
