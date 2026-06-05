@@ -1,4 +1,5 @@
 // compile: clang++ -fsycl -fsycl-device-code-split=off attributes_test.cpp
+// ONEAPI_DEVICE_SELECTOR=opencl:cpu ./a.out
 #include <sycl/detail/core.hpp>
 #include <sycl/sub_group.hpp>
 #include <sycl/usm.hpp>
@@ -42,7 +43,7 @@ class WGBIG {
   int *out;
   int *wg_size_out;
   int *sg_size_out;
-  [[sycl::reqd_work_group_size(2048)]] void operator()(nd_item<1> it) const {
+  [[sycl::reqd_work_group_size(16384)]] void operator()(nd_item<1> it) const {
     out[it.get_global_id(0)] = static_cast<int>(it.get_global_id(0)) * 2 + 1;
     if (it.get_local_id(0) == 0 && it.get_group(0) == 0) {
       *wg_size_out = static_cast<int>(it.get_local_range(0));
@@ -51,12 +52,12 @@ class WGBIG {
   };
 };
 
-class SG8 {
+class SGSMALL {
  public:
   int *out;
   int *wg_size_out;
   int *sg_size_out;
-  [[sycl::reqd_sub_group_size(8)]] void operator()(nd_item<1> it) const {
+  [[sycl::reqd_sub_group_size(2)]] void operator()(nd_item<1> it) const {
     out[it.get_global_id(0)] = static_cast<int>(it.get_global_id(0)) * 2 + 1;
     if (it.get_local_id(0) == 0 && it.get_group(0) == 0) {
       *wg_size_out = static_cast<int>(it.get_local_range(0));
@@ -93,12 +94,12 @@ class SG32 {
   };
 };
 
-class SG64 {
+class SGBIG {
  public:
   int *out;
   int *wg_size_out;
   int *sg_size_out;
-  [[sycl::reqd_sub_group_size(64)]] void operator()(nd_item<1> it) const {
+  [[sycl::reqd_sub_group_size(128)]] void operator()(nd_item<1> it) const {
     out[it.get_global_id(0)] = static_cast<int>(it.get_global_id(0)) * 2 + 1;
     if (it.get_local_id(0) == 0 && it.get_group(0) == 0) {
       *wg_size_out = static_cast<int>(it.get_local_range(0));
@@ -142,11 +143,11 @@ void run_kernel(queue &q, const std::string &name) {
 
 struct K_WG16   : WG16   { static constexpr size_t launch_range = 16;   static constexpr size_t local_size = 16;  };
 struct K_WG32   : WG32   { static constexpr size_t launch_range = 32;   static constexpr size_t local_size = 32;  };
-struct K_WGBIG  : WGBIG  { static constexpr size_t launch_range = 2048; static constexpr size_t local_size = 2048;};
-struct K_SG8    : SG8    { static constexpr size_t launch_range = 64;   static constexpr size_t local_size = 64;  };
+struct K_WGBIG  : WGBIG  { static constexpr size_t launch_range = 16384; static constexpr size_t local_size = 16384;};
+struct K_SGSMALL    : SGSMALL    { static constexpr size_t launch_range = 64;   static constexpr size_t local_size = 64;  };
 struct K_SG16   : SG16   { static constexpr size_t launch_range = 64;   static constexpr size_t local_size = 64;  };
 struct K_SG32   : SG32   { static constexpr size_t launch_range = 64;   static constexpr size_t local_size = 64;  };
-struct K_SG64   : SG64   { static constexpr size_t launch_range = 128;  static constexpr size_t local_size = 128; };
+struct K_SGBIG   : SGBIG   { static constexpr size_t launch_range = 128;  static constexpr size_t local_size = 128; };
 
 int main(int argc, char **argv) {
     queue q;
@@ -167,10 +168,10 @@ int main(int argc, char **argv) {
         {"WG16",  [&]{ run_kernel<K_WG16>(q,  "WG16");  }},
         {"WG32",  [&]{ run_kernel<K_WG32>(q,  "WG32");  }},
         {"WGBIG", [&]{ run_kernel<K_WGBIG>(q, "WGBIG"); }},
-        {"SG8",   [&]{ run_kernel<K_SG8>(q,   "SG8");   }},
+        {"SGSMALL",   [&]{ run_kernel<K_SGSMALL>(q,   "SGSMALL");   }},
         {"SG16",  [&]{ run_kernel<K_SG16>(q,  "SG16");  }},
         {"SG32",  [&]{ run_kernel<K_SG32>(q,  "SG32");  }},
-        {"SG64",  [&]{ run_kernel<K_SG64>(q,  "SG64");  }},
+        {"SGBIG",  [&]{ run_kernel<K_SGBIG>(q,  "SGBIG");  }},
     };
 
     for (int i = 1; i < argc; ++i) {
