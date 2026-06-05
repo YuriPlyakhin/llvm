@@ -47,7 +47,6 @@ struct SYCLDeviceRequirements {
   std::optional<uint32_t> WorkGroupNumDim;
   std::optional<llvm::SmallString<256>> JointMatrix;
   std::optional<llvm::SmallString<256>> JointMatrixMad;
-  std::optional<uint32_t> SubGroupSize;
 
   std::map<StringRef, util::PropertyValue> asMap() const;
 };

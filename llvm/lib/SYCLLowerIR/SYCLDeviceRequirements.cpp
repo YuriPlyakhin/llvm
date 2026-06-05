@@ -94,27 +94,6 @@ llvm::computeDeviceRequirements(const Module &M,
     }
   }
 
-  // Process just the entry points in the module
-  for (const Function *F : EntryPoints) {
-    if (auto *MDN = F->getMetadata("intel_reqd_sub_group_size")) {
-      // There should only be at most one function with
-      // intel_reqd_sub_group_size metadata when considering the entry
-      // points of a module, but not necessarily when considering all the
-      // functions of a module: an entry point with a
-      // intel_reqd_sub_group_size can call an ESIMD function through
-      // invoke_esimd, and that function has intel_reqd_sub_group_size=1,
-      // which is valid.
-      assert(
-          MDN->getNumOperands() == 1 &&
-          "intel_reqd_sub_group_size metadata expects exactly one argument!");
-      auto MDValue = ExtractUnsignedIntegerFromMDNodeOperand(MDN, 0);
-      if (!Reqs.SubGroupSize)
-        Reqs.SubGroupSize = MDValue;
-      else
-        assert(*Reqs.SubGroupSize == static_cast<uint32_t>(MDValue));
-    }
-  }
-
   return Reqs;
 }
 
@@ -149,9 +128,6 @@ std::map<StringRef, util::PropertyValue> SYCLDeviceRequirements::asMap() const {
 
   if (JointMatrixMad.has_value())
     Requirements["joint_matrix_mad"] = *JointMatrixMad;
-
-  if (SubGroupSize.has_value())
-    Requirements["reqd_sub_group_size"] = *SubGroupSize;
 
   if (WorkGroupNumDim.has_value())
     Requirements["work_group_num_dim"] = *WorkGroupNumDim;

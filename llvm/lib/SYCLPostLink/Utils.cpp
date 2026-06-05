@@ -102,15 +102,6 @@ bool llvm::sycl_post_link::isTargetCompatibleWithModule(
       return false;
   }
 
-  // Check if module sub group size is compatible with the target.
-  // For ESIMD, the reqd_sub_group_size will be 1; this is not
-  // a supported by any backend (e.g. no backend can support a kernel
-  // with sycl::reqd_sub_group_size(1)), but for ESIMD, this is
-  // a special case.
-  if (!IrMD.isESIMD() && ModuleReqs.SubGroupSize.has_value() &&
-      !is_contained(TargetInfo.subGroupSizes, *ModuleReqs.SubGroupSize))
-    return false;
-
   return true;
 }
 
